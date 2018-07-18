@@ -1,0 +1,8 @@
+metrics （指标）
+和sql中得count,max,avg一样
+Metrics）：对实时大量数据进行计算
+初始用户和密码都是admin
+
+
+https://grafana.com/plugins/grafana-piechart-panel/installation
+grafana-cli plugins install grafana-piechart-panel

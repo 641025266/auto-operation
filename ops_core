@@ -1,0 +1,2063 @@
+﻿31-3
+DHCP: Dynamic Host Configuration Protocol
+DHCP服务端提供IP/Netmask，Gateway，DNS Server
+	bootp: boot protocol --> dhcp
+		租约：
+			2hours:
+				50%: 1hours --> 2hours
+					50%：1hours --> 2hours
+						75%: 0.5hours --> 2hours
+							87.5%: 0.25hours --> 2hours
+lease time租约时间
+renewal表示续租
+客户端与服务器端沟通流程：
+		1、Client: dhcp discover--此时是广播
+		2、Server: dhcp offer：(IP/netmask, gw)
+		3、Client：dhcp request---此时是单播
+		4、Server: dhcp ack
+		续租：---此时是单播
+			Client: dhcp request
+			Server: dhcp ack
+			Server: dhcp nak
+		Linux DHCP协议的实现程序：dhcp（重量级）, dnsmasq（轻量级）
+                yum install -y dhcpd
+                dhcp服务：
+			/usr/sbin/dhcpd
+				/etc/dhcp/dhcpd.conf --> /etc/rc.d/init.d/dhcpd
+				/etc/dhcp/dhcpd6.conf --> /etc/rc.d/init.d/dhcpd6
+               dhcrelay中继服务：
+			/usr/sbin/dhcrelay
+				/etc/rc.d/init.d/dhcrelay
+	       dhcp server监听端口：67/udp
+	       dhclient监听端口: 68/udp
+               /etc/dhcp/dhcpd.conf配置文件结构如下
+			subnet {
+				...
+			}
+			host {
+
+			}
+		其它配置选项：
+			filename: 指明引导文件名称；
+			next-server：提供引导文件的服务器IP地址；
+
+               ~]# cat /var/lib/dhcpd/dhcpd.leases   地址分配记录,也就是dhcp服务端信息库
+               ~]# dhclient -d  在客户端执行该命令，可以从dhcp服务端获取IP地址，-d表示客户端工作在前台
+
+31-4
+
+	PXE：preboot execute environment预执行环境, 由Intel带头研发，实际上就是在网卡的ROM内运行着一只类dhcpclient程序，该程序可以从dhcp服务器获取IP地址
+             网卡支持网络引导
+	     dhcp:提供IP地址，filename和next-server（即tftp-server）
+             tftp-server：提供filename文件即pxelinux.0，内核文件，initrd文件
+             yum repository:提供安装过程所需要的rpm包，比如使用httpd服务提供
+
+        PXE安装流程：client端从dhcp服务器端获取IP地址，filename和next-server-----》然后到tftp-server获取pxelinux.0和内核文件和initrd文件--》安装对应的程序
+        注意：client端刚开始从dhcp服务端处获取的是网卡地址，还不是内核地址。只有加载内核后，重新获取的地址才是内核地址，注意区分这两个概念。
+
+	CentOS 7 PXE安装步骤:
+                iptables和selinux务必关闭掉
+		yum -y install syslinux tftp-server tftp httpd system-config-kickstart
+                cp /root/ks.cfg /var/www/html 制作好kickstart文件后复制到/var/www/html目录
+                rpm -ql tftp-server
+                mount /dev/cdrom /mnt 把centos7的安装光盘挂载到mnt目录
+                cp -r /mnt/* /var/www/html/
+                cp /mnt/pxelinux/{vmlinuz,initrd.img} /var/lib/tftpboot/    /var/lib/tftpboot/是tftp-server的数据库根目录
+		cp /usr/share/syslinux/pxelinux.0 /var/lib/tftpboot/
+		cp /usr/share/syslinux/{chain.c32,mboot.c32,menu.c32,memdisk} /var/lib/tftpboot/
+		mkdir /var/lib/tftpboot/pxelinux.cfg/
+		vim /var/lib/tftpboot/pxelinux.cfg/default
+		     default menu.c32                         使用菜单引导启动
+			  prompt 5                            显示时间为5s
+			  timeout 30
+			  MENU TITLE CentOS 7 PXE Menu        安装时出现的字符串，是大标题
+			  LABEL linux
+			  MENU LABEL Install CentOS 7 x86_64  安装时出现的字符串，是小标题
+			  KERNEL vmlinuz
+			  APPEND initrd=initrd.img inst.repo=http://192.168.139.128/  ks=http://192.168.139.128
+                          注意：APPEND后面虽然没有指明IP地址，但是内核加载成功后，它也会从dhcp服务端自动获取IP地址
+               vim /etc/dhcp/dhcpd.conf
+                       subnet {
+			    filename "pxelinux.0";
+                            next-server 192.168.139.128;
+			}
+               systemctl start httpd.service 
+               systemctl start tftp.socket   监听在udp/69端口
+               tftp可以运行为瞬时守护进程，即tftp.socket；也可以运行为独立守护进程，即tftp.service；建议运行为瞬时守护进程，因为本身在centos6上就是由xinetd管理的
+
+31-5
+在CentOS 6上安装syslinux后，无法找到/usr/share/syslinux/pxelinux.0，所以CentOS 6上没有安装成功。
+CentOS 6 PXE: 
+		yum -y install syslinux tftp-server tftp httpd 
+		cp /usr/share/syslinux/pxelinux.0 /var/lib/tftpboot/
+		cp /media/cdrom/images/pxelinux/{vmlinuz,initrd.img} /var/lib/tftp/boot/
+		cp /media/cdrom/isolinux/{boot.cfg,vesamenu.c32,splash.png} /var/lib/tftp/boot/
+		mkdir /var/lib/tftpboot/pxelinux.cfg/
+		cp /media/cdrom/isolinux/isolinux.cfg /var/lib/tftpboot/pxelinux.cfg/default/
+
+
+31-6
+安装使用cobbler：
+		# yum install cobbler cobbler-web httpd
+		# systemctl start httpd.service
+		# systemctl start cobblerd .service
+cobbler是PXE的二次封装，由python开发
+Cobbler的三个层次：
+		distro：表示发行版，标志发行版的关键资源就是kernel和initrd。比如CentOS 6.7或者CentOS 7.1
+		profile：distro+kickstart，subprofile，一个distro可以多个profile，这样就可以安装不同需求的操作系统
+		system
+
+[root@web cobbler]#yum install -y cobbler
+[root@web cobbler]#systemctl start httpd.service  必须要先启动httpd，否则cobbler check会报错
+[root@web cobbler]#systemctl start cobblerd.service
+[root@web cobbler]#cobbler check 
+The following are potential configuration items that you may want to fix:
+1 : The 'server' field in /etc/cobbler/settings must be set to something other than localhost, or kickstarting features will not work.  
+    This should be a resolvable hostname or IP for the boot server as reachable by all machines that will use it.
+2 : For PXE to be functional, the 'next_server' field in /etc/cobbler/settings must be set to something other than 127.0.0.1, 
+    and should match the IP of the boot server on the PXE network.
+3 : Some network boot-loaders are missing from /var/lib/cobbler/loaders, you may run 'cobbler get-loaders' to download them, or, 
+    if you only want to handle x86/x86_64 netbooting, you may ensure that you have installed a *recent* version of the syslinux package installed and can ignore 
+    this message entirely. Files in this directory, should you want to support all architectures, should include pxelinux.0, menu.c32, elilo.efi, and yaboot. 
+    The 'cobbler get-loaders' command is the easiest way to resolve these requirements.
+4 : enable and start rsyncd.service with systemctl
+5 : debmirror package is not installed, it will be required to manage debian deployments and repositories
+6 : The default password used by the sample templates for newly installed machines (default_password_crypted in /etc/cobbler/settings) is still set to 'cobbler' 
+    and should be changed, try: "openssl passwd -1 -salt 'random-phrase-here' 'your-password-here'" to generate new one
+7 : fencing tools were not found, and are required to use the (optional) power management features. install cman or fence-agents to use them
+Restart cobblerd and then run 'cobbler sync' to apply changes.
+
+cobbler check出7处需要修改的地方，每一次修改后执行systemctl restart cobblerd.service，然后再执行cobbler check查看数量是否有减少
+
+5和7项可以忽略
+
+针对1/2/6项做如下修改
+[root@web cobbler]# openssl passwd -1 -salt '123' 'chenhao@'
+$1$123$CMnUgxC6/XQnQ0qNEc707/
+[root@web cobbler]# vim /etc/cobbler/settings
+  server: 192.168.139.184
+  next_server: 192.168.139.184
+  default_password_crypted: "$1$123$CMnUgxC6/XQnQ0qNEc707/"
+
+针对第4项
+[root@web cobbler]# rpm -ql rsync 确保rsync包是安装的，没有安装的话自己安装就可以了
+[root@web cobbler]# systemctl enable rsyncd.service 
+[root@web cobbler]# systemctl start rsyncd.service 
+针对第3项
+[root@web cobbler]# cobbler get-loaders 
+最后重启服务再检测
+[root@web cobbler]# systemctl restart cobblerd.service 
+[root@web cobbler]# cobbler sync
+[root@web cobbler]# cobbler check  此时应该只剩下原有的5和7项了
+The following are potential configuration items that you may want to fix:
+1 : debmirror package is not installed, it will be required to manage debian deployments and repositories
+2 : fencing tools were not found, and are required to use the (optional) power management features. install cman or fence-agents to use them
+Restart cobblerd and then run 'cobbler sync' to apply changes.
+
+
+cobbler依赖dhcp，tftp，rsync，dns等服务。可以使用cobbler管理这些服务，也可以让这些服务独立运行。本次配置以这些服务独立运行
+manage_dhcp: 0
+manage_dns: 0
+manage_tftpd: 1
+manage_rsync: 0
+	
+[root@web cobbler]# cobbler 
+usage
+=====
+cobbler <distro|profile|system|repo|image|mgmtclass|package|file> ... 
+        [add|edit|copy|getks*|list|remove|rename|report] [options|--help]  此行是上一行命令的选项
+cobbler <aclsetup|buildiso|import|list|replicate|report|reposync|sync|validateks|version|signature|get-loaders|hardlink> [options|--help]
+[root@web cobbler]# cobbler import --help
+导入生成一个distro
+vmlinuz和initrd文件只有在系统启动过程中有用，这两者的注意作用就是挂载根文件系统，一旦根文件系统挂载完成，这两者就没有用了。
+所以这两者同根文件系统可以放在不同的地方，比如vmlinuz和initrd文件在U盘上，根文件系统在硬盘上。
+这也解释了kvm和xen有一种启动方式就是vmlinuz和initrd文件在物理机上，根文件系统在一个镜像光盘上的原因。
+
+20170515 48-1
+自己也要监控自己
+puppet:
+	OS Provisioning(PXE, Cobbler)
+	OS Configuration(ansible, puppet, saltstack, chef, cfengine)   一般来说有agent类型的比没有agent类型的更安全，因为ansible需要有对方root的密码
+	Command and Control(func, ansible, fabric)
+	puppet：IT基础设施自动化管理工具；
+		整个生命周期；
+			provisioning   创建物理机
+			configuration  主要是针对虚拟机进行配置
+			orchestration  编排
+			reporting
+	官网：www.puppetlabs.com
+	作者：Luke Kanies, 创办了PuppetLabs公司   2005, 0.2 --> 0.24.x --> 0.25.x --> 0.26.x(2.6.x) --> 2.7.x --> 3.0
+	puppet: 有agent
+		master/agent
+			master：puppet server
+			agent: 真正执行相应管理操作的核心部件；周期性地去master请求与自己相关的配置；
+补充说明：
+        puppet agent可以独立工作在单个节点，也可以接受 puppet server的配置。所以先重点了解puppet agent的单独工作模型，再配合puppet server即可。
+	puppet的工作模式：
+		声明性、基于模型；
+			定义：使用puppet配置语言定义基础配置信息，即在server端为每一个agent定义配置信息；
+			模拟：模拟测试运行；
+			强制（即执行）：强制当前agent与定义的目标状态保持一致；
+			报告：agent通过puppet api将执行结果发送给接收者server；
+
+	puppet有三个层次：
+		配置语言
+		事务层（解决依赖关系）
+		资源抽象层（比如server只告诉agent要创建用户，至于怎么创建，agent端自己实现）
+			资源类型：例如用户、组、文件、服务、cron任务等等；（资源可以定义在master也可以定义在agent）
+			资源属性及状态与其实现方式分离；
+			期望状态
+
+	puppet的核心组件：资源
+		资源清单：manifests，资源清单主要是用来放置资源的（server端可以有很多个manifests）
+		资源清单及清单中的资源定义的所依赖文件、模板等数据按特定结构组织起即为“模块”，模块也是有很多个的
+                一个站点清单里面包含多个模块，一个模块内可以包含多个资源
+                
+        puppet agent主动到master端拉取自己的配置；ansible是主动推送配置到管理节点
+        puppet agent和server端通过https协议进行通信
+
+	puppet的3.8版本安装：
+                rpm -ivh https://yum.puppetlabs.com/puppetlabs-release-el-6.noarch.rpm  此命令会生成/etc/yum.repos.d/puppetlabs.repo文件
+                yum list all|grep puppet                                                查看是否有puppet出现
+                yum install -y puppet puppet-server  facter                             facter是因素，代理人之意，facter的作用就是收集变量
+	
+
+	puppet：
+		命令的用法格式：
+                         #puppet help 
+Usage: puppet <subcommand> [options] <action> [options]
+Available subcommands:
+    
+  agent             The puppet agent daemon
+  apply             Apply Puppet manifests locally
+  ca                Local Puppet Certificate Authority management.
+  catalog           Compile, save, view, and convert catalogs.
+  cert              Manage certificates and requests
+  certificate       Provide access to the CA for certificate management.
+  certificate_request  Manage certificate requests.
+  certificate_revocation_list  Manage the list of revoked certificates.
+  config            Interact with Puppet's settings.
+  describe          Display help about resource types
+  device            Manage remote network devices
+  doc               Generate Puppet documentation and references
+  facts             Retrieve and store facts.
+  file              Retrieve and store files in a filebucket
+  filebucket        Store and retrieve files in a filebucket
+  help              Display Puppet help.
+
+		获取子命令的用法 
+                        #puppet help SUBCOMMAND	
+		获取所支持的所有的资源类型：
+			# puppet describe -l            列出所有的资源类型
+			# puppet describe RESOURCE_TYPE 获取指定资源的帮助
+
+48-2
+定义资源：
+		type {'title':
+			attribute1	=> value1,
+			attribute2	=> value2,
+		}    type必须小写；title在同一类型下必须惟一；
+
+                大部分资源都有的资源属性是namevar，ensure，metaparameter
+		常用资源类型：user, group, file, package, service, exec（用于执行命令）, cron, notify
+		group:
+			管理组资源
+			常用属性：
+				name: 组名，即NameVar
+				gid：GID
+				system: true, false
+				ensure: present, absent
+				members：组内成员
+
+		user：
+			管理用户
+			常用属性：
+				comment：注释信息
+				ensure：present, absent
+				expiry：过期期限；
+				gid：基本组id
+				groups：附加组
+				home：家目录
+				shell：默认shell
+				name: NameVar
+				system：是否为系统用户，true|false
+				uid: UID
+				password：
+user资源的具体使用案例:
+1）vim /root/user.pp  （pp表示puppet）
+   user { 'chenhao3':
+           shell => '/bin/bash',
+           ensure => present,
+           password => 'chenhao3',
+   }
+
+2）puppet apply -v /root/user.pp
+   Notice: Compiled catalog for node1.localdomain in environment production in 0.16 seconds 一定要先编译成catalog后才能应用
+   Info: Applying configuration version '1504131142'
+   Notice: /Stage[main]/Main/User[chenhao3]/ensure: created
+   Info: Creating state file /var/lib/puppet/state/state.yaml
+   Notice: Finished catalog run in 0.55 seconds
+
+3）cat /etc/password 查看chenhao3用户是否已经生成
+
+		file：
+			管理文件及其内容、从属关系以及权限；内容可通过content属性直接给出，也可通过source属性根据远程服务器路径下载生成；
+			指明文件内容来源：
+				content：直接给出文件内容，支持\n, \t(水平制表符）；
+				source：从指定位置下载文件；
+				ensure：file, directory, link, present, absent
+			常用属性：
+				force:强制运行，可用值yes, no, true, false
+				group：属组
+				owner：属主
+				mode：权限，支持八进制格式权限，以及u,g,o的赋权方式
+				path：目标路径；
+				source：源文件路径；可以是本地文件路径（单机模型），也可以使用puppet:///modules/module_name/file_name（server模式）；
+				target：当ensure为“link”时，target表示path指向的文件是一个符号链接文件，其目标为此target属性所指向的路径；
+                                        此时content及source属性自动失效；
+
+
+					file{'/tmp/mydir':
+					      ensure  => directory,
+					}
+
+					file{'/tmp/puppet.file':
+					        content => 'puppet testing\nsecond line.',
+					        ensure  => file,
+					        owner   => 'centos',
+					        group   => 'distro',
+					        mode    => '0400',
+					}
+
+					file{'/tmp/fstab.puppet':  
+					        source  => '/etc/fstab',
+					        ensure  => file,
+					}
+
+					file{'/tmp/puppet.link':
+					        ensure  => link,
+					        target  => '/tmp/puppet.file',
+					}	
+					
+		exec：类似ansible的command，shell模块
+		      运行一外部命令；命令应该具有“幂等性”；
+				幂等性：
+					1、命令本身具有	幂等性；
+					2、资源有onlyif, unless,creates等属性以实现命令的条件式运行；
+					3、资源有refreshonly属性，以实现只有订阅的资源发生变化时才执行；
+
+			command：运行的命令即NameVar；
+			creates：此属性指定的文件不存在时才执行此命令，即增加了条件判断	
+			cwd：在此属性指定的路径下运行命令（即先cd到该目录才运行命令，current work directory）；
+			user: 以指定的用户身份运行命令；
+			group: 指定组；
+			onlyif：给定一个测试命令；仅在此命令执行成功（返回状态码为0）时才运行command指定的命令；
+			unless：给定一个测试命令；仅在此命令执行失败（返回状态码不为0）时才运行command指定的命令；
+	      刷新，更新refresh：接受到其它资源发来的refresh通知时，默认是重新执行exec定义的command，refresh属性可改变这种行为，即可指定仅在refresh时运行的命令
+			refreshonly：仅在收到refresh通知，才运行此资源；
+			returns：期望的状态返回值，返回非此值时表示命令执行失败；
+			tries：尝试执行命令的次数；
+			timeout：命令超时时长；
+			path：指明命令搜索路径，其功能类型PATH环境变量；其值通常为列表['path1', 'path2', ...]；如果不定义此属性，则必须给定命令的绝对路径；
+
+exec资源的具体使用案例：
+                           vim /root/test.pp
+				exec{'/sbin/modprobe ext4': 
+					user	=> root,
+					group	=> root,
+					refresh	=> '/sbin/modprobe -r ext4 && /usr/sbin/modprobe ext4',
+					timeout	=> 5,
+					tries	=> 2,
+				}
+
+				exec{'/bin/echo mageedu > /tmp/hello.txt':
+					user	=> root,
+					group	=> root,
+					creates	=> '/tmp/hello.txt', 只有当/tmp/hello.txt不存在时，才执行/bin/echo mageedu > /tmp/hello.txt
+				}
+
+				exec{'/bin/echo mageedu > /tmp/hello2.txt':
+					user	=> root,
+					group	=> root,
+					unless	=> '/usr/bin/test -e /tmp/hello2.txt', 只有当unless指定的命令执行失败时，才执行exec指定的命令 
+				}
+                            puppet applay -v /root/test.pp
+
+		notify：类似shell里面的echo
+			核心属性：
+				message：要发送的消息的内容；NameVar
+                notify的具体使用案例：
+                              vim /root/test.pp
+				  notify{"hello there.": }
+                              puppet apply -v /root/test.pp 
+
+		cron：
+			管理cron任务；
+			常用属性：
+				ensure：present（创建）, absent（删除）
+				command：要运行的job,即要运行的命令；
+				hour:
+				minute:
+				month:
+				monthday：
+				weekday:
+				name:cron任务的名称
+				user：运行的用户
+				environment：运行时的环境变量；
+                 cron的具体案例：
+                            vim /root/test.pp
+				cron{"sync time": 
+					command	=> '/usr/sbin/ntpdate 172.16.0.1 &> /dev/null',
+					minute	=> '*/10',
+					ensure	=> present,
+				}	
+
+
+48-3
+回顾：
+	
+	master/agent
+		modules
+		site manifest
+			node "node1" {
+				a, ...
+			}
+	agent:
+		manifests -->即编译成 catalog 
+		puppet <subcommand>
+			describe
+			apply
+
+	核心概念：资源
+		type {"title":
+			attribute1 	=> value,
+			...
+		}
+
+		三类特殊属性：
+			NameVar
+			ensure
+			Metaparameters
+
+puppet(2)
+	
+		package：
+			管理程序包；
+			常用属性：
+				ensure: installed, latest, VERSION(2.3.1-2.el7)，present, absent（卸载）
+				name：程序包名称；
+				source：包来源；可以本地文件路径或URL；
+				provider：rpm 在centos上默认是yum
+                 package的具体使用案例：
+                   vim /root/test.pp 
+			package{'zsh':
+				ensure	=> latest,
+			}
+
+			package{'jdk':
+				ensure	=> installed,
+				source	=> '/usr/local/src/jdk-8u25-linux-x64.rpm',
+				provider => rpm,
+			}		
+
+		service：
+			管理服务；
+			常用属性：
+				enable：是否开机自动启动，true|false；
+				ensure：启动(running), 停止(stopped)；
+				hasrestart：是否支持restart参数；
+				hasstatus：是否支持status参数；
+				name：服务名称，NameVar
+				path：脚本查找路径；
+				pattern：用于搜索此服务相关的进程的模式；当脚本不支持restart/status时，用于确定服务是否处于运行状态；
+				restart：用于执行“重启”的命令；
+				start：
+				stop:
+				status：
+
+				package{'nginx':
+					ensure	=> latest,
+				}
+
+				service{'nginx':
+					ensure	=> running,
+					enable	=> true,
+					hasrestart => true,
+					hasstatus => true,
+					restart	=> 'systemctl reload nginx.service', 自己定义restart命令
+				}			
+
+	特殊属性：Metaparameters（before，require，notify，subscribe）
+		资源引用：Type['title']，（资源名称的首子母必须大写）
+		依赖关系
+			被依赖的资源中使用：before
+			依赖其它资源的资源：require
+			->：链式依赖
+
+		通知关系
+			用在被依赖的资源中使用：notify
+			用在监听其它资源的资源：subscribe
+			~>：链式通知
+特殊属性的具体使用案例:
+vim /root/test.pp  
+   group { 'linux':
+          gid => 3000,
+          ensure => present,
+   } 
+   user { 'chenhao3':
+           gid => 3000,
+           require => Group['linux'],---重点是这里，即要要求group linux先存在
+           shell => '/bin/bash',
+           ensure => present,
+           password => 'chenhao3',
+   }
+
+
+	puppet的变量及其作用域
+		变量名均以$开头，赋值符号=; 任何非正则表达式类型的数据均可赋值给变量；
+
+		作用域：定义代码的生效范围，以实现代码间隔离；
+			仅能隔离的是：变量，资源的默认属性；
+			不能隔离的是：资源的名称，及引用；
+
+			每个变量两种引用路径：
+				相对路径
+				绝对路径：$::scope::scope::variable  scope表示域，范围
+
+			变量的赋值符号：
+				=
+				+=：追加赋值
+
+			数据类型：
+				布尔型：ture, false
+				undef：未声明
+				字符型：可以不用引号，支持单引号(强引用)，双引号(弱引用)
+				数值型：整数和浮点数；
+				数组：[item1, item2, ...]，元素可为任意可用数据类型，包括数组和hash; 索引从0开始，还可以使用负数；
+				hash类型：{key => value, key => value,...}, 键为字符串，而值可以是任意数据类型；
+
+				正则表达式：如果不是标准数据类型，不能赋值给变量；其语法结构如下：
+							(?<ENABLED OPTION>:<SUBPATTERN>) 表示要启用的特性
+							(?-<DISABLED OPTION>:<SUBPATTERN>) 表示要关闭的特性
+							 OPTION:
+								i: 忽略字符大小写；
+								m：把.当换行符；
+								x：忽略模式中的空白和注释；
+正则表达式的具体使用案例：
+                   facter -p 可以找出operationsystem变量
+                   $package=$operationsystem ? {
+                      /(?i-mx:ubuntu|debian)/ => 'apache', 表示启用忽略字符大小写特性，但是关闭掉把.当换行符和忽略模式中的空白和注释特性
+                      /(?i-mx:centos|rehat)/ => 'httpd',
+                    }
+
+				表达式：
+					比较操作符：==, !=, <, <=, >, >=, =~, !~（表示模式匹配）, in
+					逻辑操作符：and, or, !
+					算术操作符：+, -, *, /, %, >>, <<
+					
+		puppet中变量的种类：（变量在引用时不能使用引号）
+			自定义变量
+			facter变量：可直接引用；（facter的作用就是收集系统信息）
+				    查看puppet支持的各facts：
+					facter -p
+			内置变量：
+				客户端内置：
+					$clientcert    客户端证书
+					$clientversion
+				服务器端内置
+					$servername
+					$serverip
+					$serverversion
+					$module_name
+                        SMP表示对称多处理器
+                        SMB表示server message block即服务器信息块
+
+	条件判断：
+		if, case, selector, unless
+
+		if语句：
+			if CONDITION {
+				...
+			}
+
+			if CONDITION {
+				...
+			} 
+			else {
+				...
+			}
+             if的具体使用案例：
+			if $processorcount>1 {
+				notice("SMP Host.") （notice是自带函数）
+			} else {
+				notice("Poor Guy.")
+			}		
+
+			CONDITION的用法：
+				1、比较表达式
+				2、变量引用
+				3、有返回值函数调用
+
+             condition的具体使用案例：
+			if $operatingsystem =~ /^(?i-mx:(centos|redhat|fedora|ubuntu))/ {
+				notice("Welcome to $1 distribution linux.")   $1表示第一个左括号里面匹配到的内容
+			}
+
+		case语句：
+
+			case CONTROL_EXPRESSION {
+				case1, case2: { statement }
+				case3, case4, case5: { statement }
+				...
+				default: { statment }
+			}
+
+			CONTROL_EXPRESSION：表达式、变量、函数（有返回值）；
+			case：字符串，变量，有返回值函数，模式，default
+              case的具体使用案例：
+                      case $operatingsystem {
+                           'ubuntu': { notice("Welcome to ubuntu distribution linux.") }
+                           'centos': { notice("Welcome to centos distribution linux.") }
+                            default: { notice ("I dont know") }
+                      }
+
+		selector语句：类似于case，但分支的作用不在于执行代码片断，而是返回一个直接值；
+
+			CONTROL_VARIABLE ? {
+				case1 => value1,
+				case2 => value2,
+				...
+				default => valueN
+			}
+
+			CONTROL_VARIABLE: 变量、有返回值的函数；但不能是表达式；
+			case：直接值(需要带引号)、变量、有返回值的函数、正则表达式模式或default
+                 selector的具体使用案例：
+                 $package = $operationsystem ? {
+                      /(?i-mx:ubuntu|debian)/ => 'apache', 
+                      /(?i-mx:centos|rehat)/  => 'httpd',
+                    }
+
+
+48-4
+	类：class，用于公共目的的一组资源，是命名的代码块；创建后可在puppet全局进行调用；类可以被继承；
+        类的功能可以联想函数，但是类不是函数
+        类必须要先定义，然后才能声明（声明就是调用）
+		类的定义语法格式1：
+			class class_name {
+				...puppet code...
+			}
+                  类的定义语法格式2：定义能接受参数的类
+			class class_name($arg1='value1', $arg2='value2') {
+				... puppet code ...
+			}
+                  注意：类名只能包含小写字母、数字和下载线，且必须以小写字母开头；
+
+                 类的具体使用案例：
+		 class nginx {
+			    $webserver=nginx 自定义一个变量
+			    package{$webserver:
+					ensure	=> latest,
+			    }
+
+			    file{'/etc/nginx/nginx.conf':
+					ensure	=> file,
+					source	=> '/root/modules/nginx/files/nginx.conf',
+					require	=> Package['nginx'],
+					notify	=> Service['nginx'],
+			    }
+
+			    service{'nginx':
+					ensure	=> running,
+					enable	=> true,
+					hasrestart => true,
+					hasstatus => true,
+					#restart  => 'systemctl reload nginx.service',
+					require	=> [ Package['nginx'], File['/etc/nginx/nginx.conf'] ],
+			    }
+		  }	
+                 include nginx    注意：类在声明后才开始执行，声明就是函数中的调用；
+
+
+		类声明的方式1：include class_name, class_name, ...
+		类声明的方式2：
+			class{'class_name':
+				arg1 => value,
+				arg2 => value,
+			}
+
+		类声明的方式2的具体使用案例：
+				class nginx($webserver='nginx') {
+				    package{$webserver:
+				        ensure  => latest,
+				    }
+
+				    file{'/etc/nginx/nginx.conf':
+				        ensure  => file,
+				        source  => '/root/modules/nginx/files/nginx.conf',
+				        require => Package['nginx'],
+				        notify  => Service['nginx'],
+				    }
+
+				    service{'nginx':
+				        ensure  => running,
+				        enable  => true,
+				        hasrestart => true,
+				        hasstatus => true,
+				        #restart        => 'systemctl reload nginx.service',
+				        require => [ Package['nginx'], File['/etc/nginx/nginx.conf'] ],
+				    }
+				}
+
+				class{'nginx':    声明nginx类即调用nginx类
+				      webserver => 'tengine', 覆盖定义时的参数值
+				}
+
+		类继承：inherits就是继承的意思
+			定义方式：
+				class base_class {
+					... puppet code ...
+				}
+
+				class base_classname::subclass_name  inherits  base_classname {   
+					... puppet code ...
+				}
+
+			作用：继承一个已有的类，并实现覆盖资源属性（=>），或向资源属性追加额外值（+>）
+			类继承时：
+				(1) 声明子类时，其基类会被自动首先声明；
+				(2) 基类成为了子类的父作用域，基类中的变量和属性默认值会被子类复制一份；
+				(3) 子类可以覆盖父类中同一资源的相同属性的值；
+                 
+				class nginx {
+					package{'nginx':
+						ensure	=> latest,
+						name => nginx,
+					} ->  链式依赖，表示下面的service依赖此处的package
+					
+					service{'nginx':
+						enable	=> true,
+						ensure	=> running,
+						hasrestart => true,
+						hasstatus => true,
+						restart => 'service nginx reload',
+					}
+				}
+
+				class nginx::webserver inherits nginx {
+					file{'/etc/nginx/nginx.conf':
+						source => '/root/modules/nginx/files/nginx_web.conf',
+						ensure	=> file,
+						notify 	=> Service['nginx'], 
+					}
+				}
+
+				class nginx::proxy inherits nginx {
+					file{'/etc/nginx/nginx.conf':
+						source => '/root/modules/nginx/files/nginx_proxy.conf',
+						ensure	=> file,
+						notify 	=> Service['nginx'],
+					}
+				}			
+
+                                include nginx::webserver 调用类
+
+
+			在定义子类时，覆盖父类中已经定义的资源的属性值具体使用案例：
+				class nginx::webserver inherits nginx {
+				        Package['nginx'] {  此处表示资源的引用 
+				                name => tengine, 此处的=>表示覆盖父类中的资源属性
+				        }
+				        file{'/etc/nginx/nginx.conf':
+				                source => '/root/modules/nginx/files/nginx_web.conf',
+				                ensure  => file,
+				                notify  => Service['nginx'],
+				        }
+				}
+                        在定义子类时，向父类资源属性追加额外值的具体使用案例：
+                               class nginx::webserver inherits nginx {
+				        Package['nginx'] {   
+				                name +=> tengine, 此处的+>表示向父类资源属性追加安装tengine
+				        }
+				        file{'/etc/nginx/nginx.conf':
+				                source => '/root/modules/nginx/files/nginx_web.conf',
+				                ensure  => file,
+				                notify  => Service['nginx'],
+				        }
+				}
+
+
+模板：基于ERB(嵌入ruby语言）模板语言，在静态文件中使用变量等编程元素生成适用于多种不同的环境的文本文件（配置文件）；
+     （ERB）Embedded RuBy, 用于实现在文本文件中嵌入ruby代码，原来的文本信息不会被改变，但ruby代码会被执行，执行结果将直接替换原来代码；
+
+		<%= Ruby Expression %>：替换为表达式的值；
+		<% Ruby Expression %>：仅执行代码，而不替换；
+		<%# comment %>：文本注释；
+		<%%：输出为<%
+		%%>：输出为%>
+		<%- Ruby code %>：忽略空白字符；
+		<% Ruby code -%>：忽略空白行；
+		在模板中可以使用变量，包括puppet的任意可用变量，但变量名以@字符开头；
+
+		条件判断：
+			<% if CONDITION -%>
+				some text
+			<% end %>
+
+			<% if CONDITION -%>
+				some text
+			<% else %>
+				some other text
+			<% end %>
+
+		迭代：（相当于循环）
+			<% @ArrayName.echo do | Variable_Name | -%>  把数组里面的元素轮流赋值给变量
+				some text with <%= Variable_Name %>
+			<% end %>
+
+          模板的具体使用案例：
+             1）vim /root/test.pp
+                class nginx {
+				package{'nginx':
+						ensure	=> latest,
+						name => nginx,
+					} ->  
+					
+				service{'nginx':
+						enable	=> true,
+						ensure	=> running,
+						hasrestart => true,
+						hasstatus => true,
+						restart => 'service nginx reload',
+				       }
+		              }
+		class nginx::proxy inherits nginx {
+				file{'/etc/nginx/nginx.conf':
+						content => template('/root/nginx.conf'),（调用模板的方式，模板就是含有变量的文件）
+						ensure	=> file,
+						notify 	=> Service['nginx'],
+				     }
+				                  }			
+
+                 include nginx::proxy  
+              2）vim /root/nginx.conf
+                     user nginx;
+                     worker_processes <%= @processorcount %>; processcount变量使用facter -p来查看
+                     error_log /var/log/nginx/error.log;
+                     pid /var/run/nginx.pid;
+                     .............
+              3）puppet apply -v /root/test.pp
+
+	模块：(类似ansible中的role）
+		/etc/puppet/modules/module_name/
+			manifests/：必须要有一个init.pp文件，而且init.pp文件里面至少应该包含一个与当前模块名称同名的类；
+			files/：静态文件（没有含有变量）；在master端调用的方式为puppet:///modules/module_name/file_name;
+			templates/：模板文件目录；在master端调用模板的方式为template('module_name/template_file_name')；
+			lib/：插件目录；
+			tests/：当前模块的使用帮助文件及示例文件；
+			spec/：类似于tests目录，存储lib目录下定义的插件的使用帮助及示例文件；
+
+	模块管理命令：
+                        puppet help module 
+                                     This subcommand can find, install, and manage modules from the Puppet Forge, module命令默认是到网上的Puppet Forge寻找模块
+			puppet module <action> [--environment production ] [--modulepath $basemodulepath ]
+
+				ACTIONS:
+				  build        Build a module release package.
+				  changes      Show modified files of an installed module.
+				  generate     Generate boilerplate for a new module.
+				  install      Install a module from the Puppet Forge or a release archive.
+				  list         List installed modules
+				  search       Search the Puppet Forge for a module.
+				  uninstall    Uninstall a puppet module.
+				  upgrade      Upgrade a puppet module.
+				
+模块命令的使用案例：
+[root@node1 ~]# puppet module list  查看已经安装的模块
+/etc/puppet/modules (no modules installed)
+/usr/share/puppet/modules (no modules installed) 默认是到如上两个目录查看已经安装的模块
+
+[root@node1 ~]# puppet module  search nginx  默认是到Puppet Forge查找与nginx有关的模块
+Notice: Searching https://forgeapi.puppetlabs.com ...
+模块的具体使用案例：
+    1）mkdir /etc/puppet/modules/nginx/{manifests,files,templates,lib,tests,spec} -pv 
+    2）vim /etc/puppet/modules/nginx/manifests/init.pp
+       class nginx {
+            package {'nginx':
+                    ensure => installed,
+                    name => nginx,
+                    before => Service['nginx'],
+            } 
+
+            service {'nginx':
+                  enable => true,
+                  ensure => running,
+                  hasrestart => true,
+                  hasstatus => true,
+                  restart => 'service nginx reload',
+                  require => Package['nginx'],
+           }
+}
+class nginx::proxy inherits nginx {
+                                  file {'/etc/nginx/nginx.conf':
+                                       content => template('nginx/nginx.conf'),
+                                       ensure => file,
+                                       notify => Service['nginx'],
+                                  }
+}  此时千万不能在这里声明类了
+
+     3）vim  /etc/puppet/modules/nginx/templates/nginx.conf 
+          user nginx;
+          worker_processes <%= @processorcount %>;   重点是这里
+          error_log /var/log/nginx/error.log;
+          .........
+     4）puppet apply -v --noop -e 'include nginx::proxy'  --noop表示干跑一遍即测试下
+     5）puppet apply -v  -e 'include nginx::proxy'      要在那里运行，就在那里声明类
+
+ 
+48-5             
+回顾：
+	变量、数据类型、判断语句、类、模板、模块
+	变量：$variable
+	数据类型：布尔型、undef、字符、数值、数组[item1,item2,...]、hash {key=>value, key=value,} (hash即关联数组）、正则表达式
+	判断语句：
+		if, case, selector, unless
+
+	类：
+		class class_name {
+			...puppet code...
+		}
+
+		class class_name($arg1=value1,$arg2=value,...){
+			...pupppet code...
+		}
+
+		声明方式：
+			include class_name
+			class{'class_name':
+				arg1	=> newvalue1,
+				arg2	=> newvalue2,
+			}
+
+		继承：
+		class base_class::class_name inherits base_class {
+			... puppet code ...
+		}
+			覆盖父类中资源的属性值：
+				Type['title'] {
+					attribute 	=> newvalue,
+					attribute 	+> extravalue,
+				}
+
+	模板：ERB，Embedded RuBy；
+		<%= @variable %>
+		template('/PATH/TO/TEMPLATE_FILE')
+
+	模块：
+		modules/module_name/
+				manifests/：init.pp，而且init.pp文件里面至少应该包含一个与当前模块名称同名的类
+				files/：声明方式为puppet:///modules/module_name/file_name
+				templates/：声明方式为template('module_name/template_file_name')
+				lib/
+				tests/
+				spec/
+
+
+务必要先配置好主机名解析，即/etc/hosts
+puppet(3)
+	agent/master：
+		 agent：默认每隔30分钟向master发送node name和facts（变量），并请求catalog，如何实现自动功能？
+		master：验正客户端身份，查找与其相关的site manifest，编译生成catalog，并发送给客户端；
+		ssl xmlrpc, https，监听在8140/tcp
+
+        puppet的C/S配置方式：
+                yum install -y https://yum.puppetlabs.com/puppetlabs-release-el-6.noarch.rpm
+		master：yum install  -y puppet puppet-server facter
+		 agent：yum install  -y puppet puppet-server facter
+
+	配置及配置文件：
+		主配置文件：/etc/puppet/puppet.conf（puppet agent配置文件）
+		显示或设置配置参数：
+			puppet config  print 显示配置内容
+			puppet config  set  VARNAME设置某一个变量内容	
+		手动生成完成配置文件：
+			master: puppet master --genconfig > /etc/puppet/puppet_default.conf    该命令是基于已有的配置文件进行生成
+			 agent：puppet agent  --genconfig >> /etc/puppet/puppet_default.conf
+			注意：
+				(1) 生成新的配置之前不能删除或移动原有的puppet.conf；
+				(2) 生成的配置中，有的参数已经被废弃，与现有Puppet版本可能兼容；
+				(3) 有的参数的默认值与现在版本所支持值可能不相兼容；
+		获取puppet文档：puppet doc分段，称为reference
+
+puppet doc命令的具体使用案例：
+
+[root@compute1 ~]# puppet doc --list          列出所有的reference
+configuration - A reference for all settings  每一行称为一个reference
+function - All functions available in the parser
+indirection - Indirection types and their terminus classes
+metaparameter - All Puppet metaparameters and all their details
+providers - Which providers are valid for this machine
+report - All available transaction reports
+type - All Puppet resource types and all their details
+				
+[root@compute1 ~]# puppet doc -r configuration	 查看configuration的reference信息
+				
+
+		配置文件的组成部分：
+			[main]
+			[master]
+			[agent]
+
+		签署证书：
+			puppet cert <action> [-h|--help] [-V|--version] [-d|--debug] [-v|--verbose] [--digest <digest>] [<host>]
+			puppet cert list        查看所有等待签署的请求；
+                        puppet cert list  --all 查看所有签署请求，包括等待签署的和已经完成签署的
+
+
+
+	配置agent/master：（务必关掉master的iptables，否则agent无法连接上master）
+		1、配置master; 
+			# puppet master -v --no-daemonize 
+Info: Creating a new SSL key for ca 为自己生成一个私钥
+Info: Creating a new SSL certificate request for ca  证书签署请求 
+Info: Certificate Request fingerprint (SHA256): EE:71:F5:43:FD:38:67:AE:53:D9:8B:9A:2F:B5:63:A6:F5:0A:8E:DC:FE:DA:83:ED:76:6C:65:50:7A:72:4A:69
+Notice: Signed certificate request for ca 为自己生成一个证书
+Info: Creating a new certificate revocation list   生成一个用于通信的私钥
+Info: Creating a new SSL key for compute1.localdomain 证书签署请求 
+Info: csr_attributes file loading from /etc/puppet/csr_attributes.yaml  
+Info: Creating a new SSL certificate request for compute1.localdomain
+Info: Certificate Request fingerprint (SHA256): D2:86:C3:47:1E:59:E7:AC:C4:BF:87:FA:8C:32:91:C4:E3:72:7F:A3:1C:2E:28:4D:35:8B:0B:EF:FC:C9:39:A2
+Notice: compute1.localdomain has a waiting certificate request
+Notice: Signed certificate request for compute1.localdomain
+Notice: Removing file Puppet::SSL::CertificateRequest compute1.localdomain at '/var/lib/puppet/ssl/ca/requests/compute1.localdomain.pem' 证书位置
+Notice: Removing file Puppet::SSL::CertificateRequest compute1.localdomain at '/var/lib/puppet/ssl/certificate_requests/compute1.localdomain.pem'
+Notice: Starting Puppet master version 3.8.7
+
+			# systemctl start puppetmaster.service  监听在8140/tcp
+                        # systemctl start puppetagent.service   如果master节点也要监听自己的话可以开启puppetagent，puppetagent好像只有centos7才有
+			
+
+		2、配置agent：
+			# puppet agent --server=MASTER_HOST_NAME --no-daemonize --noop --test -v  只是测试下，并没有真正申请证书
+                        # puppet agent --server=compute1.chenhao.com  --no-daemonize --verbose 发送证书签署请求给master；
+Info: Creating a new SSL key for node1.chenhao.com
+Info: Caching certificate for ca
+Info: csr_attributes file loading from /etc/puppet/csr_attributes.yaml
+Info: Creating a new SSL certificate request for node1.chenhao.com
+Info: Certificate Request fingerprint (SHA256): BC:39:67:B0:24:9F:6B:62:02:6D:CF:58:85:89:86:31:6A:06:19:3A:86:2E:F5:F8:0A:00:FB:56:9A:26:90:11
+Info: Caching certificate for ca
+
+		3、在master端为客户签署证书
+			# puppet cert list 查看需要签署的请求
+			# puppet cert sign NODE_NAME
+			# puppet cert sign --all
+                4、再到agent端确认
+                   [root@node1 ~]# ll /var/lib/puppet/ssl 
+total 20
+drwxr-xr-x 2 puppet puppet 4096 Sep  2 05:19 certificate_requests
+drwxr-xr-x 2 puppet puppet 4096 Sep  2 05:10 certs
+drwxr-x--- 2 puppet puppet 4096 Aug 31 06:12 private
+drwxr-x--- 2 puppet puppet 4096 Sep  2 05:19 private_keys
+drwxr-xr-x 2 puppet puppet 4096 Sep  2 05:19 public_keys
+                增加：如果某一个证书出现了问题，做如下操作
+                      1）在master端
+                         puppet clean NODE_NAME
+                      2）在agent端
+                         rm -rf /var/lib/puppet/ssl/* 
+                      3)重新请求，重新签署即可
+
+		4、在master端：
+			(1) 安装所有要用到的模块；
+			    puppet module install，前提是自己要有模块才可以安装，这一步可选
+
+			(2) 在/etc/puppet/manifests/目录下定义site manifest即站点清单;
+                                vim  /etc/puppet/manifests/site.pp
+					node 'NODE_NAME' {
+						... puppet code ...
+					}
+				例如：
+					node "node3.magedu.com" {
+						include nginx::proxy 如果还有其他类，再增加include语句即可
+					}
+
+	节点管理：
+		site.pp定义节点的方式：
+			(1) 以主机名直接给出其相关定义；
+				node 'NODE_NAME' {
+					... puppet code ...
+				}
+
+			(2) 把功能相近的主机事先按统一格式命名，按统一格式调用；
+				node /^web\d+\.magedu\.com/ { d表示数字，+表示至少有一个数字
+					... puppet code ...
+				}
+
+		主机命名规范：
+			角色-运营商-机房名-IP.DOMAIN.TLD ，比如web-unicom-jxq-1.1.1.1.magedu.com
+
+		对节点配置分段管理：
+			vim /etc/puppet/mainfests/site.pp
+					import "webservers/*.pp" 如果要执行cacheservers里面的资源，就修改为import "cacheservers/*.pp"
+
+		        mkdir /etc/puppet/mainfests/webservers/
+                        vim  /etc/puppet/mainfests/webservers/{unicom.pp,telecom.pp} 
+			mkdir /etc/puppet/mainfests/cacheservers/
+			vim  /etc/puppet/mainfests/cacheservers/{unicom.pp,telecom.pp} 	
+
+48-6
+
+	面临的两个问题：
+		1、主机名解析；
+		2、如何为系统准备好puppet agent；
+
+	puppet的多环境支持：
+master节点的配置文件：
+[root@localhost ~]# vim  /etc/puppet/puppet.conf
+			[master]
+			environment = production, testing, development   表明master端支持哪些环境
+
+			[production] 生产环境
+			manifest = /etc/puppet/environments/production/manifests/site.pp
+			modulepath = /etc/puppet/environments/production/modules/
+			fileserverconfig = /etc/puppet/fileserver.conf
+
+			[testing] 测试环境
+			manifest = /etc/puppet/environments/testing/manifests/site.pp
+			modulepath = /etc/puppet/environments/testing/modules/
+			fileserverconfig = /etc/puppet/fileserver.conf
+
+			[development] 开发环境
+			manifest = /etc/puppet/environments/development/manifests/site.pp
+			modulepath = /etc/puppet/environments/development/modules/
+			fileserverconfig = /etc/puppet/fileserver.conf
+agent节点的配置文件：
+[root@localhost ~]# vim  /etc/puppet/puppet.conf
+			[agent]
+			environment = testing
+
+ 查看当前环境变量
+[root@node1 puppet]# puppet config print environment  
+production
+
+       puppet自带的文件服务器：
+             /etc/puppet/fileserver.conf生效的结果是结合/etc/puppet/puppet.conf与/etc/puppet/auth.conf；用于实现安全配置，控制agent能够或不能访问master端的哪些文件；
+             /etc/puppet/fileserver.conf配置文件路径
+			[mount_point]
+			path /PATH/TO/SOMEWHERE
+			allow HOSTNAME
+			allow_ip IP
+			deny all
+         
+
+	auth.conf配置文件：
+		认证配置文件，为puppet提供acl功能，主要应用于puppet的Restful API的调用；
+			xmlrpc:   https://master:8140/{environment}/{resource}/{key}----Restful API风格调用
+			path /path_to_somewhere
+			auth yes 表明需要认证
+			method find, save 允许的方法
+			allow
+			allow_ip
+补充说明：
+       Restful API实际上就是RPC远程过程调用，为了方便调用，Restful API风格指的是远程主机的路径即URL就是API名称
+       RPC的意思就是代码在远程主机上执行，然后把调用结果返回给被调用主机
+	namespaceauth.conf用于控制名称空间的访问法则，该配置文件默认不存在
+		[puppetrun]
+		allow node3.magedu.com
+
+		名称空间：fileserver, puppetmaster, puppetrunners, puppetreports, resource
+
+	autosign.conf：让master在接收到agent的证书签署后直接自动为其签署，该配置文件默认不存在； *.magedu.com
+	puppet kick模式：3.8版本之后已经废弃(可以适当放弃该知识点）；
+	puppet的dashboard（监控面板）：3.8版本之后已经废弃(可以适当放弃该知识点）；
+	puppet master的扩展方式：
+		单机扩展：
+			Nginx + Mongrel
+			Nginx + Passenger
+			httpd + Passenger
+
+一个完整的带有autosign.conf的puppet配置步骤：
+              准备工作： master端和agent端的主机名一定要配置好，同时关闭掉iptables和selinux
+              master端：
+             1）rpm -ivh https://yum.puppetlabs.com/puppetlabs-release-el-6.noarch.rpm
+	     2）yum install -y puppet puppet-server facter
+             3）mkdir /etc/puppet/modules/nginx/{manifests,files,templates,lib,tests,spec} -pv 
+             4）vim /etc/puppet/modules/nginx/manifests/init.pp
+       class nginx {
+            package {'nginx':
+                    ensure => installed,
+                    name => nginx,
+                    before => Service['nginx'],
+            } 
+
+            service {'nginx':
+                  enable => true,
+                  ensure => running,
+                  hasrestart => true,
+                  hasstatus => true,
+                  restart => 'service nginx reload',
+                  require => Package['nginx'],
+           }
+}
+class nginx::proxy inherits nginx {
+                                  file {'/etc/nginx/nginx.conf':
+                                       content => template('nginx/nginx.conf'),
+                                       ensure => file,
+                                       notify => Service['nginx'],
+                                  }
+}  
+
+              5）vim /etc/puppet/manifests/site.pp 
+                  node "node4.chenhao.com" {
+                        include nginx::proxy
+                  }
+              6）vim  /etc/puppet/autosign.conf 
+                   *.chenhao.com
+              7）service puppetmaster start 
+
+       agent端：
+                rpm -ivh https://yum.puppetlabs.com/puppetlabs-release-el-6.noarch.rpm
+		yum install -y puppet puppet-server facter
+                puppet agent --server=node1.chenhao.com --no-daemonize -v  此时服务器自动签署证书，客户端立刻获取属于自己的站点清单
+Info: Creating a new SSL key for node4.chenhao.com
+Info: Caching certificate for ca
+Info: csr_attributes file loading from /etc/puppet/csr_attributes.yaml
+Info: Creating a new SSL certificate request for node4.chenhao.com
+Info: Certificate Request fingerprint (SHA256): E7:5A:65:9C:36:C8:C5:C4:32:C7:F0:8E:2E:D0:04:15:5A:A4:58:7C:4B:43:2D:32:C4:EE:02:2F:1E:91:5A:B0
+Info: Caching certificate for node4.chenhao.com
+Info: Caching certificate_revocation_list for ca
+Info: Caching certificate for ca
+Notice: Starting Puppet client version 3.8.7
+Info: Retrieving pluginfacts
+Info: Retrieving plugin
+Info: Caching catalog for node4.chenhao.com
+Info: Applying configuration version '1504349419'
+Notice: /Stage[main]/Nginx::Proxy/File[/etc/nginx/nginx.conf]/ensure: defined content as '{md5}56bb72853b94eb5e179bb56b2e19b089'
+Info: /Stage[main]/Nginx::Proxy/File[/etc/nginx/nginx.conf]: Scheduling refresh of Service[nginx]
+Notice: /Stage[main]/Nginx/Package[nginx]/ensure: created
+Notice: /Stage[main]/Nginx/Service[nginx]/ensure: ensure changed 'stopped' to 'running'
+Info: /Stage[main]/Nginx/Service[nginx]: Unscheduling refresh on Service[nginx]
+Notice: Finished catalog run in 10.82 seconds
+                  ss -tunl查看80端口是否已经启动
+
+如何实现agent端自动到server端拉取自己的配置信息？没有操作成功，在centos7上启动puppetagent，也许可以解决
+
+
+
+
+
+32-1
+监控概要
+	传感器：
+	    数据采集 --> 数据存储 --> 数据展示
+	    报警：采集到的数据超出阈值
+	    趋势：时间序列数据
+        需要监控的对象：
+		设备/软件
+			设备：服务器、路由器、交换机、IO系统
+			软件：OS本身、网络、应用程序
+		偶发性小故障：主机down机、服务不可用、主机不可达
+		严重故障：
+		主机性能指标
+		监控完成的数据是时间序列数据
+        监控通道协议（即server端和agent端的通信协议）有：--重要
+             ssh，telnet，SNMP（Simple Network Management Protocol 简单网络管理工具），agent（专业选择）,ipmi
+32-2
+补充说明：
+参照https://open-doc.dingtalk.com/docs/doc.htm?treeId=257&articleId=105735&docType=1这个文档可以实现自定义钉钉机器人的显示内容
+]# vi ding_robot.sh
+#!/bin/bash
+curl 'https://oapi.dingtalk.com/robot/send?access_token=69015f4ab00136e8596f69301704e344bd89354c04ac3ff673c65919130cc04b' \
+   -H 'Content-Type: application/json' \
+   -d '
+  {"msgtype": "text",
+    "text": {
+        "content": "我就是我, 是不一样的烟火"
+     }
+  }'
+比如上面这个脚本就可以实现自定义显示内容
+
+	著名的开源监控工具：zabbix（综合能力好）, zennos, opennms, cacti（基于SNMP研发来，可实现采样，存储，展示）, nagios(强大的报警功能，没有存储功能), ganglia
+	zabbix: 有专用agent的监控工具
+		监控主机：Linux、Windows、FreeBSD
+		网络设备：SNMP, SSH(并非所有)
+	数据存储：解决采集来的数据存储在哪里的问题
+		cacti: rrd (round robin database)
+		zabbix: 
+                      关系型数据库，比如mysql, pgsql
+                      rrd
+                      时间序列数据库
+                      nosql
+	zabbix架构中的组件：
+		zabbix-server: C语言
+		zabbix-agent: C语言
+		zabbix-web：GUI，用于实现zabbix设定和展示
+		zabbix-proxy: 分布式监控环境中的专用组件
+		zabbix-database: MySQL, PGSQL(postgreSQL)、Oracle、DB2、SQLite
+        zabbix的程序构成：
+               zabbix_server服务端守护进程
+               zabbix_agentd客户端守护进程
+               zabbix_proxy代理服务器，可选组件
+               zabbix_get 命令行工具，主动获取数据
+               zabbix_sendor 命令行工具，主动发送数据
+	zabbix产生的数据主要由四部分组成：
+		配置数据
+		历史数据：50Bytes
+		历史趋势数据: 128Bytes
+		事件数据: 130Bytes
+         zabbix的版本：LTS（long term support）有2.2，3.0
+         zabbix的特性：
+               数据采集：snmp，ssh,telnet，agent；
+               自定义检测机制：user parameter；
+               自定义时间间隔
+               实时绘图：展示，graph,map,screen,slide show(幻灯片显示）
+               告警：升级，script和notifycation
+               数据存储：mysql等
+               支持模板：实现快速监控
+               网络自动发现
+               API
+               分布式监控：server<-->zabbix proxy<--->agent/ssh，通过zabbix proxy实现，主要应用于监控的指标数量超大的情况下
+32-3
+以3.0为例在centos7上安装zabbix：(同样的步骤没有能在centos6上操作成功？）
+实际就是安装lamp，如果是用yum安装，在安装如下组件时会自动把httpd，php，php-mysql，mysql-server安装好，但是如果是自己源码安装则需要把对应的依赖环境安装好
+在安装前要把selinux和iptables关闭掉,否则会报错
+   zabbix server端的具体操作步骤：
+   1）vim /etc/yum.repos.d/zabbix.repo
+       [zabbix]
+       name=zabbix for CentOS7
+       baseurl=http://repo.zabbix.com/zabbix/3.0/rhel/7/x86_64/
+       gpgcheck=0
+   2）yum install -y zabbix-server-mysql  zabbix-get    zabbix-server-mysql的目的主要是连接到mysql
+   3）yum install -y mariadb-server 
+   4）yum install -y zabbix-web zabbix-web-mysql 
+   5）yum install -y zabbix-agent                        如果server端也需要监控自己才需要安装，否则不需要安装
+   server端数据库初始化：    
+   6）cd /usr/share/doc/zabbix-server-mysql-3.0.10/   使用rpm -ql zabbix-server-mysql命令查找该文件
+   7）gzip -d create.sql.gz
+   8）systemctl start  mariadb.service  
+mysql> create database zabbix charset 'utf8';
+mysql> grant all on zabbix.* to 'zabbix'@'127.0.0.1' identified by 'zabbix';
+mysql> grant all on zabbix.* to 'zabbix'@'192.168.139.%' identified by 'zabbix';
+mysql> flush privileges;
+    9）mysql -h 127.0.0.1 -u zabbix -p --database=zabbix <create.sql (实际就是mysql的恢复操作,3.X只有一个sql脚步，即create.sql,明确指明要把表导入到zabbix库中）
+mysql> show tables from zabbix;确定已经有很多表生产
+    10）vim /etc/zabbix/zabbix_server.conf   该文件有4类指令（genernal parameters,advanced parameters,loadable modules,TLS-related parameters）
+            ListenPort=10051
+            SourceIP=192.168.139.198  即server ip
+            Logtype=file           
+            LogFile=/var/log/zabbix/zabbix_server.log
+            LogFileSize=0
+            PidFile=/var/run/zabbix/zabbix.pid
+            DBHost=192.168.139.198  数据库服务器地址
+            DBName=zabbix
+            DBUser=zabbix
+            DBPassword=zabbix
+            DBsocket=/var/lib/mysql/mysql.lock
+     11）systemctl start zabbix-server.service  
+     12）ss -tunl 查看10051/tcp端口是否已经监听
+补充说明：
+      注意：在centos7和7.1上，如果启动zabbix-server有问题，需要升级trousers程序包到0.3.13版本以上 ，yum install -y trousers  
+     13）配置zabbix-web
+         13.1）配置php的时区指定,修改如下两个文件中的一个就可以了
+                  （1）php.ini                        全局配置
+                   (2) /etc/httpd/conf.d/zabbix.conf  片段化的配置文件，由zabbix-web生成
+         vim /etc/httpd/conf.d/zabbix.conf
+             Alias /zabbix /usr/share/zabbix
+            <Directory "/usr/share/zabbix">
+               Options FollowSymLinks
+               AllowOverride None
+               Require all granted
+              <IfModule mod_php5.c>
+        php_value max_execution_time 300
+        php_value memory_limit 128M
+        php_value post_max_size 16M
+        php_value upload_max_filesize 2M
+        php_value max_input_time 300
+        php_value always_populate_raw_post_data -1
+        php_value date.timezone Asia/Shanghai         修改此处的时间
+              </IfModule>
+           </Directory>
+         13.2）systemctl start  httpd.service  
+         13.3）在浏览器中访问http://192.168.139.198/zabbix
+               登录的账号是admin，密码是zabbix
+               安装后产生的配置文件：/etc/zabbix/web/zabbix.conf.php
+补充说明：
+      在大规模的监控中，server端的zabbix-server，zabbix-database，zabbix-web可以分别安装在不同的主机上
+      2.X有三个sql脚步，所以数据库初始化步骤为：顺序不能错
+          mysql -h 127.0.0.1 -u zabbix -p zabbix < mysql.sql
+          mysql -h 127.0.0.1 -u zabbix -p zabbix < images_mysql.sql
+          mysql -h 127.0.0.1 -u zabbix -p zabbix < data.sql
+32-4
+agent端具体操作步骤：
+          yum install -y zabbix-agent zabbix-sendor 
+          vim /etc/zabbix/zabbix_agentd.conf   
+              # EnableRemoteCommands=0  这里可以选择
+          ....passive checks 
+              *server =192.168.139.183  多个ip以逗号分开，此处的server指的是server端或者proxy端的ip地址，实际就是授权
+              # ListenIP=0.0.0.0        监听本机的所有地址
+              # StartAgents=3           预先启动的agent个数
+          ....active checks
+              *serveractive=ip       此处的server指的是server端ip地址
+              *Hostname=HOSTNAME     此处的HOSTNAME要填agent端的名称
+           systemctl start zabbix-agent.service 
+           ss -tunl 查看10050/tcp端口是否开启
+
+补充说明：
+        1)主动和被动模式选其一即可，如果选择被动模式，只写明server即可，但是如果选择主动模式serveractive和Hostname必须填写。
+          另外如果选择了被动模式，主动模式的配置就可以注释掉,本次配置一被动模式进行
+        2)被动检测模式：以agent为中心，server向agent请求获取各监控项的数据，agent收到请求后把监控项数据发给server
+        3)主动检测模式：以agent为中心，agent向server获取与自己相关的监控项配置，然后agent把对应的监控项数据发给server
+        4)一个host创建好后，至少需要一个item，host才能处于激活状态，非常重要
+
+采集到的数据类型：数值，字符串
+监控系统：数据采集、数据存储、报警、数据可视化
+zabbix监控配置术语：
+		hostgroup：主机组
+                host：即被监控的主机
+		item：监控项，key+采集到的数据，key就是采集命令的别名
+                appliction：一组item的集合
+		trigger：触发器是一个逻辑表达式，通常定义不合理区间，一般都会用到函数
+		event：trigger event和主机discovery event
+		action：notice和command
+		media：发送通知的手段或通道，比如email，SMS，jabber，script。一般选择email，script
+                alert：告警
+		users：meida
+                graph：图形
+        item当中的key是可以接parameters，其中key有两类：
+                 zabbix内建：agent（passive），agent（active），snmp v1，
+                 用户自定义
+        监控接口：
+           Agent interfaces
+           SNMP interfaces
+           JMX interfaces
+           IPMI interfaces
+       采集到的信息种类：数值和字符串
+       历史数据：采样生成的数据
+       历史趋势数据：每小时的最大值、最小值、平均值、统计
+       采集到的数据处理方式：
+	   As is: 不做任何处理
+	   Delta(speed per second): (value - prev_value)/(time - prev_time),比如10: 12000, 20: 13000
+	   Delta(simple change)：(value - prev_value)，就是简单的差值
+        一次简单的监控配置：--记住该流程非常重要
+       Host group --> Hosts --> Applications --> Items --> Triggers(触发Events) -->
+      (要定义action，必须要事先创建media type,User groups以及Users) -->Actions(condition,operation(send message,remote script))
+32-5
+	Trigger:触发器，一个item可以有多个trigger，但一个trigger只能关联一个item
+        zabbix server每次接收到items的新数据时，就会对Item的当前采样值进行判断，即与trigger的表达式进行比较；
+        触发器的表达式格式 {<server>:<key>.<function>(parameter)}<operator><constant>    operator表示运算符，constant常数即阈值
+        Trigger Severity：表示严重级别，有如下6种
+				Not classified: 未知级别，灰色；
+				Information: 一般信息，亮绿；
+				Warning：警告信息，黄色；
+				Average: 一般故障，橙色；
+				High：高级别故障，红色；
+				Disater：致使故障，亮红；
+        常用函数
+              diff()比较采样值与事先存储的值
+              max()
+              min()
+              avg()
+              nodata()最近一次没有采集到数据
+        Action：触发action的一般为如下4种事件
+				Trigger events: OK --> PROBLEM
+				Discovery events: zabbix的network discovery工作时发现主机；
+				Auto registration events：主动模式的agent注册时产生的事件；
+				Internal events：Item变成不再被支持，或Trigger变成未知状态；
+	Action Operations的动作分为：send message和Remote command
+			其中配置send message的步骤为：
+				(1) 定义好Media；
+				(2) 定义好用户；
+				(3) 配置要发送的信息
+32-6
+         Action Operations 有两类：
+              (1) send message
+                       media type传递消息的通道
+                       media type创建中的type类型包括Email/script/SMS/jabber等,其中script类型表示自定义完成信息发送的脚本，该脚本在server端
+                             注意同remote command中script的区别，remote command中script是在agent端
+                       user group用户的逻辑容器
+                       users指定用户
+             （2）remote command功能：
+                   remote command是在agent节点上执行(比如重启服务，运行远程脚本，通过ipmi接口重启服务器)
+                   remote command的类型：ssh，telnet，ipmi，customed script，global script
+                   告警升级流程：一般是先执行remote command，如果执行remote command失败，然后才send message
+案例：
+监控httpd的80端口，且发现服务down掉后，执行远程命令重启服务，如果重启服务失败，再发邮件告警
+        （1）在zabbix上创建好与httpd相关的item和trigger以及remote command的action
+        （2）由于zabbix-agent的用户是zabbix，而zabbix用户是没有权限执行systemctl restart httpd.service的，所以先要配置好zabbix用户有权限执行该命令
+             在agent节点做如下操作
+             [root@node3 ~]# visudo
+             zabbix        ALL=(ALL)       NOPASSWD: AL  允许zabbix用户无密码切换到root用户
+             #Defaults    requiretty                     注释掉default require tty，表示不需要终端也可以执行命令
+             [root@node3 ~]# grep zabbix /etc/passwd
+             zabbix:x:987:982:Zabbix Monitoring System:/var/lib/zabbix:/sbin/nologin
+             [root@node3 ~]# usermod -s /bin/bash zabbix    修改zabbix的shell
+             [root@node3 ~]# grep zabbix /etc/passwd
+             zabbix:x:987:982:Zabbix Monitoring System:/var/lib/zabbix:/bin/bash
+             [root@node3 ~]# su -l zabbix -c 'sudo /usr/bin/systemctl restart httpd.service' 此处可能有错误出现，可以忽略
+             [root@node3 ~]# ss -tunl 确实80端口已经处于监听状态
+         (3) 允许agent进程执行远程命令
+             [root@node3 ~]# vim /etc/zabbix/zabbix_agentd.conf
+             EnableRemoteCommands=1
+             LogRemoteCommands=1
+             [root@node3 ~]# systemctl restart zabbix-agent.service 
+        （4）尝试停掉httpd服务，验证httpd服务是否会自动重启
+29分钟
+media type中的script介绍：
+zabbix软件会向脚步传递三个参数
+             $1,经由此信道发送的信息接收目标，比如在发邮件配置中，action对应的user的邮件地址就是$1
+             $2,信息的标题即subject，也就是action的default subject会被当做$2，比如邮件的标题
+             $3,信息的body，action中的Default message会被当做$3
+
+使用media type中的script发邮件的完整案例：
+如果自己搭建有邮件服务器，比如xiaoenai在zbx01的server端有邮件服务，则不需要选择script，直接选择Email即可,xiaoenai目前使用的是zabbix 3
+media type中的script的具体使用，监控远程主机上的mariadb服务，如果服务down掉，就通过script发送信息给zabbix-server主机 
+首先把本机的sendmail和postfix停掉
+]# yum -y install mailx 
+]# vi /etc/mail.rc  在配置文件的最后补充如下配置,该配置文件可以使用rpm -ql mailx查找
+set from=chenhao19890817@163.com
+set smtp=smtp.163.com:25
+set smtp-auth-user=chenhao19890817@163.com
+set smtp-auth-password=ch48778358
+]# vim  /etc/zabbix/zabbix_server.conf
+AlertScriptsPath=/usr/lib/zabbix/alertscripts   该脚本是放置在服务器端的
+~]# vim /usr/lib/zabbix/alertscripts/mail.sh    这个脚本也可以顺利发邮件，但是报警内容以附件的形式在邮件中显示，不方便浏览,改为如下的新脚本
+#!/bi/bash 
+#
+contact=$1
+subject=$2
+body=$3
+echo  "$body"|mail -s "$subject" $contact
+]# yum -y install dos2unix
+]# vi /usr/lib/zabbix/alertscripts/mail.sh  新脚本可以把告警内容以正文形式展示在邮件中
+#!/bin/bash
+
+mailTmp=/tmp/mailTmp
+echo "$3" >$mailTmp
+to=$1
+subject=$2
+dos2unix -k $mailTmp
+mail -s "$subject" "$to" < $mailTmp
+]# chmod +x /usr/lib/zabbix/alertscripts/mail.sh
+]# /usr/lib/zabbix/alertscripts/mail.sh  641025266@qq.com 'nihao'  'wake'  查看641025266@qq.com邮箱是否收到邮件
+dos2unix: converting file /tmp/mailTmp to Unix format ...   
+最后按照正常流程配置即可Host group --> Hosts --> Applications --> Items(创建mysqldown的监控项)-->Triggers(mysql)-->media type(比如mysqlmonitor)-->User-->Actions
+核心的media type和User参照ppt的发邮件的完整案例详情页
+
+补充说明:在anction创建时，填入如下信息，让收到的邮件更加清晰
+default subject--故障{TRIGGER.STATUS},服务器:{HOSTNAME1}发生: {TRIGGER.NAME}故障!
+default message--
+告警主机:{HOSTNAME1}
+告警时间:{EVENT.DATE} {EVENT.TIME}
+告警等级:{TRIGGER.SEVERITY}
+告警信息: {TRIGGER.NAME}
+告警项目:{TRIGGER.KEY1}
+问题详情:{ITEM.NAME}:{ITEM.VALUE}
+当前状态:{TRIGGER.STATUS}:{ITEM.VALUE1}
+事件ID:{EVENT.ID}
+recovery subject--恢复{TRIGGER.STATUS}, 服务器:{HOSTNAME1}: {TRIGGER.NAME}已恢复!
+recovery message--
+告警主机:{HOSTNAME1}
+恢复时间:{EVENT.RECOVERY.DATE} {EVENT.RECOVERY.TIME}
+告警等级:{TRIGGER.SEVERITY}
+告警信息: {TRIGGER.NAME}
+告警项目:{TRIGGER.KEY1}
+问题详情:{ITEM.NAME}:{ITEM.VALUE}
+当前状态:{TRIGGER.STATUS}:{ITEM.VALUE1}
+事件ID:{EVENT.ID}
+
+33-1        
+          配置监控项的方法：
+              （1）手动逐个添加item，item（key+parameter），key的类型包括内建key和用户自定义
+              （2）使用模板                         
+          展示接口：
+                1）graph的创建：congfiguration--hosts--graphp
+                   graph的查看：monitoring--graphs
+                   graph：把多个曲线整合到一个图形
+                2）screen和slide的创建：monitoring--screens，选择创建screen或者slide
+                screen：把多个graph整合到一个screen
+                slide show：把多个screen以slide显示，slide即幻灯片
+          模板：是多个item项的集合，用于链接主机从而实现监控的快速配置
+                链接
+                卸载ulink，但是监控到的数据还在 
+                ulink and clear，表示在卸载模板的同时，把监控到的数据也清除掉
+                模板可嵌套
+                模板的好处是：修改了一个模板后，对应链接到模板的所有主机监控配置都改变了，避免逐台修改改变。
+               1）模板创建的具体流程：
+                          创建模板：Configuratio-->templates中可以创建自定义的templates
+                          创建应用：Configuration->Templates->Create application 
+                        创建监控项：Configuration->Templates->network traffic on em1->Items->Create Item
+                      创建Triggers：Configuration->Templates->network traffic on em1->Triggers->Create trigger来创建Triggers
+               2）模板的调用：在创建主机的选项中，有一个选项就是templates，此处可以调用zabbix内建的templates和自定义的templates
+33-2
+宏和自定义的key
+          宏：macro，预设的文本替换模式，非常类似函数中的变量
+              宏的类别：
+                      内置宏{MACRO}，比如{HOST.NAME},{HOST.IP},{TRIGGER.NAME}等
+                      自定义宏{$MACRO},只能使用大写字母，数字，下划线，不能使用小写字母，内置的宏不需要加$
+              无论是内置宏还是自定义宏，其级别又分为：全局，模板，主机(优先级最高）
+              在调用宏的时候，自定义宏使用{$MACRO}， 内置宏使用{MACRO}
+              全局宏的创建：administration--general--macro，在右侧的下拉菜单中选择macro
+              模板宏的创建：configruation--templates--macro
+              主机宏的创建：configruation--hosts--macro
+宏的使用案例参考ppt
+用户自定义key，即Userparameter
+用户自定义的key是定义在zabbix_agent端,也就是说Userparameter是在agent端执行，所以需要agent端支持才可以
+Userparameter的格式为UserParameter=<key>,<command>
+
+不带参数的自定义key的使用案例：
+agent端：
+[root@node3 ~]# vim /etc/zabbix/zabbix_agentd.conf
+UserParameter=memory.total,cat /proc/meminfo |awk '/MemTotal:/{print $2}'
+[root@node3 ~]# systemctl restart zabbix-agent.service 
+[root@node3 ~]# ss -tunl 查看10050端口
+server端：
+[root@localhost ~]# zabbix_get -s 192.168.139.184 -k  memory.total  先以命令行的方式测试key是否可以被调用，192.168.139.184是agent端地址
+581244
+带参数的自定义key的使用案例：
+agent端：
+[root@node3 ~]# vim /etc/zabbix/zabbix_agentd.conf
+UserParameter=memory.usage,cat /proc/meminfo |awk '/$1/{print $$2}' 注意，此时print后面要以$$的形式来表示
+[root@node3 ~]# systemctl restart zabbix-agent.service 
+[root@node3 ~]# ss -tunl                                             查看10050端口
+server端：
+[root@localhost ~]# zabbix_get -s 192.168.139.184 -k  memory.usage[MemFree]
+52904
+[root@localhost ~]# zabbix_get -s 192.168.139.184 -k  memory.usage[MemTotal]
+581244
+确认自定义的key可以使用后，就可以在创建items调用key了，详细参考ppt
+
+zabbix补充资料--小恩爱
+问题1）zabbix调用钉钉机器人时，可以在命令行调用钉钉机器人发送测试信息，但是zabbix无法调用钉钉机器人发送信息
+       原因是，测试时使用的是root账号，而zabbix进程实际调用钉钉机器人时，却是zabbix用户，zabbix默认是系统用户，
+       其shell环境是/sbin/nologin,不是普通用户的/bin/bash环境，所以无法执行命令，将zabbix-server服务器上的zabbix用户shell环境改为/bin/bash
+zabbix-server端配置
+]$ cat /etc/passwd|grep zabbix
+zabbix:x:498:498::/home/zabbix:/sbin/nologin
+]$ usermod -s /bin/bash zabbix
+]$ cat /etc/passwd|grep zabbix
+zabbix:x:498:498::/home/zabbix:/bin/bash
+]$ vi /etc/zabbix/zabbix_server.conf
+   AlertScriptsPath=/usr/local/zabbix/alertscripts 增加这句配置
+]$ su -l zabbix  切换到zabbix用户进行测试
+]$ cd /usr/local/zabbix/alertscripts
+]$ ll
+-rwxrwxrwx 1 root root 5828913 Jun  7  2017 dingding_robot
+-rwxrwxrwx 1 root root     204 Dec 29 16:59 ding_robot.sh
+]$ vi  ding_robot.sh
+#!/bin/bash
+webhook="https://oapi.dingtalk.com/robot/send?access_token=69015f4ab00136e8596f69301704e344bd89354c04ac3ff673c65919130cc04b"
+/usr/local/zabbix/alertscripts/dingding_robot -webhook=$webhook
+]$ bash ding_robot.sh  如果此时可以在钉钉群里面收到测试消息，说明zabbix用户已经可以调用钉钉机器人了
+只要确认zabbix的server端的zabbix用户可以正常发送消息后，zabbix的web界面正常调用钉钉机器人即可，此处不再描述
+问题2）统计con01~05里面的/data/java_project/connectlogicserver/current/out/logs/timeout.log超时数量，超时时间设置为1s，1s内的超时数量>9就报警。
+       由于这个监控要求无法用zabbix的内置key来实现，所以需要写脚本实现自定义的key，同问题1）一样，zabbix默认是系统用户，
+       其shell环境是/sbin/nologin,不是普通用户的/bin/bash环境，所以无法执行脚本，将zabbix-server服务器上的zabbix用户shell环境改为/bin/bash
+zabbix-agent端配置
+]$ vi /etc/zabbix/zabbix_agentd.conf
+   Include=/etc/zabbix/zabbix_agentd.d/*.conf 增加这句配置
+]$ killall zabbix_agentd
+]$ /usr/sbin/zabbix_agentd  -c /etc/zabbix/zabbix_agentd.conf
+]$ vi /etc/zabbixzabbix_agentd.d/java_thread_timeout.conf
+UserParameter=java_thread_timeout, /etc/zabbix/zabbix_agentd.d/java_thread_timeout.sh
+]$ vi /etc/zabbix/zabbix_agentd.d/java_thread_timeout.sh
+#!/bin/bash
+
+java_count() {
+a=$(awk '{if($(NF-1)>=1000){print $2,$(NF-1)}}' /data/java_project/connectlogicserver/current/out/logs/timeout.log|cut -c 1-5|uniq -c|tail -1|awk '{print $1}')
+b=$(awk '{if($(NF-1)>=1000){print $2,$(NF-1)}}' /data/java_project/connectlogicserver/current/out/logs/timeout.log|cut -c 1-5|uniq -c|tail -1|awk '{print $2}')
+c=$(date +%H:%M --date="-1 minute")
+if [ "$b" == "$c" ];then
+      d=$(awk '{if($(NF-1)>=1000){print $2,$(NF-1)}}' /data/java_project/connectlogicserver/current/out/logs/timeout.log|cut -c 1-5|uniq -c|tail -1|awk '{print $1}')
+else
+      d=0
+fi
+echo $d
+}
+
+java_count
+]$ cat /etc/passwd|grep zabbix
+zabbix:x:498:498::/home/zabbix:/sbin/nologin
+]$ usermod -s /bin/bash zabbix
+]$ cat /etc/passwd|grep zabbix
+zabbix:x:498:498::/home/zabbix:/bin/bash
+]$ su -l zabbix  切换到zabbix用户进行测试
+]$ bash /etc/zabbix/zabbix_agentd.d/java_thread_timeout.sh  只要能够返回0说明zabbix用户可以执行脚本，因为测试时的上一分钟没有超时情况，所以返回0
+0
+zabbix-server端测试
+]$ su -l zabbix
+]$ /usr/local/zabbix/bin/zabbix_get -s 10.10.49.101  -k java_thread_timeout  只要能返回0说明服务器端的zabbix已经可以获取到该key了
+0
+zabbix的agent和server端的zabbix用户都可以获取key了，就可以在zabbix的web界面正常调用key了，此处不再描述
+
+33-3
+         server端扫描发现到的主机，然后添加，自动将模板链接到主机
+         自动发现方式：
+                   扫描ip地址
+                   扫描可用的服务，比如http，ftp，实际是扫描对应服务的端口
+                   zabbix_agent的响应
+                   snmp_agent的响应
+          自动发现分两个阶段：discovery和action
+          发现事件：发现host和发现service
+          可采取的actions：
+                        remote command,send message
+                        删除和添加主机
+                        启用和禁用主机
+                        添加模板
+          发现的状态--对应的动作
+          discover--add host
+          lost------delete host
+          up--------enable
+          down----disable
+dicovery的创建：Configuration—discovery创建一个discovery
+action的创建：Configuration—action创建一个action,但此时必须在右上角的Events source中选择Discovery类型后才创建action
+自动发现的详细案例参考ppt
+web监控的创建：configuration--hosts--web，关键是web中的steps的设置
+web监控的查看：monitoring--latestdata，筛选出web的监控项即可
+web主要是监控页面的下载速度或者可用性，性能等          
+33-4
+Trigger events：
+                一个监控项可以有多个trigger，但是一个trigger只能对应一个监控项
+		触发器表达式：{<Server>:<key>.<function>(<parameter>)}<operator><constant>，解释如下
+                              {<Server>:<key>.<function>(<parameter>)}会计算出一个值
+                              <operator>是一个比较操作符
+                              <constant>是一个阈值
+                              总结起来就是：{<Server>:<key>.<function>(<parameter>)}计算出来的值通过比较操作符<operator>同<constant>阈值做比较
+	        例如：node2.magedu.com:net.if.in[eth0,bytes].last(#1)}>1200，表示node2节点的eth0网卡的最近一次入站字节数是否大于1200
+
+		<function>：评估采集到的数据是否在合理范围内时所使用的函数；其评估过程可以根据采集到的数据、当前时间或其它因素；
+                常见的函数有：
+			avg, count, change, date, dayofweek, dayofmonth, delta, iregexp, regexp, last, max, min, nodata, now, prev, str, strlen, sum
+                        diff：  比较采样值是否与设置好的值相同，通常使用checksum进行
+                        nodata：没有数据
+		        regexp：检查最后一次采样的数据是否能够被指定的模式所匹配；1表示匹配，0表示不匹配；
+		        now：   返回自Unix元年至此刻经历的秒数；
+		        prev:   倒数第二个采样值；
+			str:    从最后一次的采样中查找此处指定的子串；
+			strlen：
+
+		<operator>:
+			>, <, =, #(不等于)
+			/, *, -, +	
+			&, |
+
+		触发器间有依赖关系；
+
+zabbix-web能够显示的且可指定为监控接口类型的监控方式有如下4种
+			1）Agent：passive和active
+			2）SNMP: Simple Network Management Protocol，
+			3）IPMI:智慧平台管理接口（Intelligent Platform Management Interface）原本是一种Intel架构的企业系统的周边设备所采用的一种工业标准。
+                                IPMI亦是一个开放的免费标准，使用者无需支付额外的费用即可使用此标准。
+			4）JMX：Java Management Extensions，用于通过Java自己的接口对java程序进行监控；zabbix-java-gateway用于获取监控数据；
+
+SNMP介绍：
+	     SNMP的工作模式：
+		NMS向agent收集数据,NMS表示network manager system
+		agent向NMS报告数据
+		NMS请求agent修改配置
+	     SNMP的组件：
+		MIB：management information base
+		SMI：MIB表示符号
+		SNMP协议，是tcp/ip栈中的一种
+	     SNMP协议的版本：
+		v1, v2, v3
+		v2c: NMS --> agent 
+		v3: 认证、加密、解密
+	     NMS可发起操作：
+		snmpget（读），snmpset（写），snmpwalk，snamptrap（捕获）
+             监控端口：
+		NMS: 161/udp
+	        agent: 162/udp
+             yum install -y net-snmp 客户端
+             yum install -y net-snmp-utils 服务器端
+             OID:对象标识符
+
+		SNMP监控方式概念：
+                        SNMP一般应用在被监控的对象是打印机，路由器等，因为比较agent比较高级，不是所有的设备都支持
+		        SNMP的版本有v1, v2c, v3
+                        SNMP可以简单理解为应用层协议
+                        SNMP服务基于udp工作,监听在udp/161
+			支持的操作：读Get, GetNext, 写Set, Response, 捕获Trap
+			MIB: MIB的中文是管理信息库，是被管理对象的集合，而且还额外定义了被管理对象的名称、访问权限、数据类型等属性；
+			MIB视图：MIB的子集
+			授权：将某MIB视图与某Community绑定来实现；
+			OID：Object ID对象描述符， .1.3.6.1.2.1
+				1: system
+				2: interface
+				4: ip
+				6: tcp
+				7: udp
+SNMP监控方式的具体操作步骤：
+snmp-agent节点：
+                [root@node3 ~]# yum install -y net-snmp net-snmp-libs
+                [root@node3 ~]# cat /etc/snmp/snmpd.conf
+#       sec.name  source          community
+com2sec notConfigUser  default       public
+####
+# Second, map the security name into a group name:
+#       groupName      securityModel securityName
+group   notConfigGroup v1           notConfigUser
+group   notConfigGroup v2c           notConfigUser
+####
+# Third, create a view for us to let the group have rights to:
+# Make at least  snmpwalk -v 1 localhost -c public system fast again.
+#       name           incl/excl     subtree         mask(optional)
+view    systemview    included   .1.3.6.1.2.1.1
+view    systemview    included   .1.3.6.1.2.1.25.1.1
+####
+# Finally, grant the group read-only access to the systemview view.
+#       group          context sec.model sec.level prefix read   write  notif
+access  notConfigGroup ""      any       noauth    exact  systemview none none
+                [root@node3 ~]# systemctl start snmpd.service 
+                [root@node3 ~]# ss -unl 查看udp的161端口
+snmp-server节点：
+               [root@node3 ~]# yum install -y net-snmp-utils 
+               [root@node3 ~]# snmpwalk  -v 2c -c public 192.168.139.184 .1.3.6.1.2.1.1 此处输入的路径必须是/etc/snmp/snmpd.conf授权的才可以
+SNMPv2-MIB::sysDescr.0 = STRING: Linux node3.chenhao.com 3.10.0-327.el7.x86_64 #1 SMP Thu Nov 19 22:10:57 UTC 2015 x86_64
+SNMPv2-MIB::sysObjectID.0 = OID: NET-SNMP-MIB::netSnmpAgentOIDs.10
+DISMAN-EVENT-MIB::sysUpTimeInstance = Timeticks: (342716) 0:57:07.16
+....................................................................
+               [root@localhost ~]# snmpwalk  -v 2c -c public 192.168.139.184 .1.3.6.1.2.1.25.1.1
+HOST-RESOURCES-MIB::hrSystemUptime.0 = Timeticks: (2904933) 8:04:09.33
+HOST-RESOURCES-MIB::hrSystemUptime.0 = No more variables left in this MIB View (It is past the end of the MIB tree)
+确保snmp-server节点可以获取snmp-agent节点的key，然后就可以使用snmp了
+1）在zabbix中，创建hosts时，监控接口就选择SNMP
+2) 在zabbix中，创建items时，type类型选项snmpv2agent或者snmp的其他版本，只是此时的key不能选择了，需要查看snmp的文档
+
+		JMX监控方式：
+			(1) 安装zabbix-java-gateway；
+				配置文件：/etc/zabbix/zabbix_java_gateway.conf
+					Listen_IP=
+					Listen_PORT=10052
+
+				zabbix server的配置文件/etc/zabbix/zabbix_server.conf
+					JavaGateWay=
+					JavaGateWayPort=10052
+			(2) Java应用程序开户JMX接口：
+java -Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.port=10053 -Dcom.sun.management.jmxremote.authenticate=false 
+-Dcom.sun.management.jmxremote.ssl=false 
+
+			监控Tomcat
+export CATALINA_OPTS="$CATALINA_OPTS -Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.port=10053 -Dcom.sun.management.jmxremote.authenticate=false 
+-Dcom.sun.management.jmxremote.ssl=false"
+
+	zabbix database需要用到的空间：
+		60000/60 = 1000条
+		历史数据=天数X每秒钟处理的数据量X24X3600X50Bytes，90X1000X86400X50Bytes
+		趋势数据：每一个趋势128Bytes, 大小=天数X监控项X24X128Bytes
+		事件数据：每个占据130Bytes，大小：天数X86400X130
+
+
+
+33-5
+12分钟
+	由zabbix监控某关注的指标：
+		host group --> host --> item (存储于MySQL)--> graph (zabbix-web) --> trigger(触发器) --> action(conditon+operation)
+		application：把功能相近的一组item归类在一起统一进行管理组件；
+
+	Zabbix完整的监控配置流程大体上由如下步骤组成：
+		Host group --> Hosts --> Applications --> Items --> Triggers --> Events --> Actions --> User groups --> Users --> Medias
+		graph, screen
+
+		依赖关系：Host --> Item --> Trigger --> Action --> Notice, Command
+
+		添加主机到zabbix server：
+			discovery, auto_registrion
+			low level discovery
+
+		模板：
+		   template：
+			 item, application, trigger, graph, action
+
+	主机组：
+		机器用途、系统版本、应用程序、地理位置、业务单元
+
+	Item：
+		默认的Items有多种类型：
+			Zabbix-agent：
+				工作模式：passive, active
+
+			网卡流量相关：
+				net.if.in[if,<mode>]
+					if: 接口，如eht0
+					mode: bytes, packets, errors, dropped
+				net.if.out[if,<mode>]
+				net.if.total[if.<mode>]
+
+			端口相关：
+				net.tcp.listen[port]
+				net.tcp.port[<ip>,port]
+				net.tcp.service[service,<ip>,<port>]
+				net.udp.listen[port]
+
+			进程相关：
+				kernel.maxfiles
+				kernel.maxproc
+
+			CPU相关：
+				system.cpu.intr
+				system.cpu.load[<cpu>,<mode>]
+				system.cpu.num[<type>]
+				system.cpu.switches
+				system.cpu.util[<cpu>,<type>,<mode>]
+
+			磁盘IO或文件系统相关：
+				vfs.dev.read[<device>,<type>,<mode>]
+				vfs.dev.write[<device>,<type>,<mode>]
+				vfs.fs.inode[fs,<mode>]
+
+		用户可自定义item：
+			关键：选取一个惟一的key；
+			命令：收集数据的命令或脚本；
+zabbix on CentOS 7
+	zabbix: 2.0, 2.2, 2.4 
+	epel
+		zabbix20
+		zabbix22
+	Linux开源监控系统：
+		nagios
+		cacti
+		zabbix
+		ganglia
+
+	zabbix-2.4
+		mariadb
+
+
+
+回顾和总结：zabbix的基本应用
+	Host group --> Host --> Application --> Item --> Trigger (OK-->PROBLEM, trigger event) --> Action (Conditon+Operation(Send Message, Remote Command)) 
+	Send Message：
+		Media:
+			Email、SMS、Jabber、Script、EZ Texting
+			给出具体实现：
+		User groups --> User (Media) 
+		示例中：node2.magedu.com --> Traffic --> Inbound traffic, Outbound traffic --> trigger (inboud)
+
+	Zabbix常用术语：
+		Item Key
+		Escalation
+		Template
+		Web Scennario
+
+	Zabbix服务器进程：
+		housekeeper, alter, discoverer, httppoller, Poller, pinger, db_config_syncer, timer, escaltor
+
+zabbix(3)
+
+	Item key:
+		命名要求：只能使用字母、数字、下划线、点号、连接符
+		接受参数；system.cpu.load[<cpu>,<mode>], net.if.inbound[if,<mode>]
+
+			注意：每个key背后都应该有一个命令或脚本来负现实现数据收集；此命令或脚本可调用传递给key的参数，调用方式为$1, $2,...
+
+			官方文档：https://www.zabbix.com/documentation/2.4/manual/config/items/itemtypes/zabbix_agent
+
+		在zabbix中定义item时调用某key，还需额外定义数据采集频率、历史数据的保存时长等；
+
+
+
+	
+
+	Action：
+		message
+		condition
+			event：
+				trigger
+				disovery:
+					Service Up, Service Down, Host up, Host Down, Service Discovered, Service Lost, Host Discovered, Host Lost
+				auto_registration
+				lld
+		operation
+			send message
+				Media Type
+					Email, SMS, Jabber, Script, EZ Texting
+				User
+			remote command
+				(1) 给zabbix定义sudo规则；
+					zabbix ALL=(ALL) ALL
+				(2) 不支持active模式的agent；
+				(3) 不支持代理模式；
+				(4) 命令长度不得超过255个字符；
+				(5) 可以使用宏；
+				(6) zabbix-server仅执行命令，而不关心命令是否执行成功；
+
+				前提：zabbix-agent要配置为支持执行远程命令：
+					EnableRemoteCommands=1
+
+				注意
+					(1) 如果用到以其它用户身份执行命令的话，那么命令本身要以sudo方式运行：
+						sudo /etc/rc.d/init.d/httpd restart
+					(2) 在各agent上的sudoers文件，要注释如下行:
+						Defaults    requiretty
+
+			Script：Alert Script
+				放置于特定目录中：AlertScriptsPath=/usr/lib/zabbix/alertscripts
+					zabbix_server.conf配置文件中的参数；
+
+				脚本中可使用$1, $2, $3来调用 action 中的 邮件的收件人, Default Subject, Default Message；
+
+				注意：新放入此目录中的脚本，只有重启zabbix-server方能被使用；
+
+	可视化：
+		graph, screen, slide shows, map
+
+	宏：
+		两类：
+			内建：{MACRO_NAME}
+			自定义：{$MACRO_NAME}
+
+		可以三个级别使用：
+			Global, Template, Host
+
+			优先级：Host --> Template --> Global
+				在某级别找到后将直接使用；
+	模板：一系列配置的集合，此些配置可通过“链接”的方式应用于指定的主机；
+		application, item, trigger, graph, screen, discovery, web
+	维护时间：
+		Configuration --> Maintance
+	User Parameters：
+		zabbix 内置了许多item key：
+		实现用户自定义item key, 实现特有数据指标监控；
+		语法:
+			UserParameter=<key>,<command>
+		示例：
+			UserParameter=os.memory.used, free -m | awk '/^Mem/{print $3}'
+			UserParameter=os.memory.total, free -m | awk '/^Mem/{print $2}'
+			UserParameter=Mysql.dml[*], /usr/local/mysql/bin/mysql -h$1 -u$2 -p$3 -e 'SHOW GLOBAL STATUS' | awk '/Com_$4\>/{print $$2}'
+zabbix(4)
+	zabbix提供网络发现功能：network discovery
+		HTTP、ICMP、SSH、LDAP、TCP、SNMP、Telnet、Zabbix_agent扫描指定网络内的主机；
+		一旦主机被发现，如果对其进行操作，将由action来决定；
+		LLD: Low Level Discovery
+		此二者的功能：自动添加或移除主机、将主机链接至模板或删除链接、添加监控项、将主机添加至分组、定义触发器、执行远程脚本；
+		网络发现有两个步骤：
+			discovery --> action
+			发现中的事件：
+				Service Discovered, Service Lost, Service Up, Service Down
+				Host Discovered, Host List, Host Up, Host Down
+			actions:
+				Sending notifications
+				Adding/removing hosts
+				Enabling/disabling hosts
+				Adding hosts to a group
+				Removing hosts from a group
+				Linking hosts to/unlinking from a template
+				Executing remote scripts	
+	auto_registation：
+		Active Agent Auto-Registration
+		HostMetadata
+		支持使用agent(active)类型的item key；
+		配置过程：
+			(1) 定义agent端：
+				ServerActive=
+				Server=
+				Hostname=
+				ListenIP= 设置为本机某特定IP；
+				ListenPort=
+				HostMetadata=
+				HostMetadataItem=item key, 一般使用system.uname
+			(2) 配置action, 要求其事件来源为auto-registation
+	LLD: Low Level Discovery
+		自动发现特定变量的名称；
+			#IFNAME, #FSNAME,
+		添加针对对变量的Items；
+		返回值为JSON

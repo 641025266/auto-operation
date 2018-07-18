@@ -1,0 +1,264 @@
+﻿30-1
+Ansible：
+	运维工作：系统安装（物理机、虚拟机）--> 程序包安装、配置、服务启动 --> 批量操作(ansible处于这个阶段）--> 程序发布（属于部署阶段）--> 监控
+	OS Provisioning：
+		物理机：PXE(引导执行环境）、Cobbler
+		虚拟机：Image Templates
+	Configration:
+		puppet (ruby)
+		saltstack (python)
+		chef
+		cfengine
+	Command and Control:
+		fabric
+	预发布验正：
+                新版本的代码先发布到服务器（跟线上环境配置完全相同，只是未接入到调度器）；
+	程序发布：
+		不能影响用户体验；
+		系统不能停机；
+		不能导致系统故障或造成系统完全不可用；
+	灰度发布：
+		发布路径：
+			/webapp/tuangou-1.1
+			/web/app/tuangou
+			/webapp/tuangou-1.2
+		在调度器上下线一批主机(maintanance) --> 关闭服务 --> 部署新版本的应用程序 --> 启动服务 --> 在调度器上启用这一批服务器；
+		自动化灰度发布：脚本、发布平台；
+	运维工具的分类:
+		agent: puppet, func
+		agentless: ansible, fabric--使用ssh连入节点
+        ansible的安装：
+                yum install -y ansible 
+                rpm -ql ansible 
+                主机之间配置好基于密钥的ssh认证
+	ansible:
+		模块化，调用特定的模块，完成特定的任务；
+		基于Python语言实现，有Paramiko、PyYAML和Jinja2三个关键模块；
+		部署简单，agentless；
+		主从模式
+		支持自定义模块
+		支持Playbook
+		幂等性：即多次执行，不会有差异
+		配置文件：
+			/etc/ansible/ansible.cfg
+			/etc/ansible/hosts 主机清单
+	ansible:
+		os provision:
+			物理机：pxe, cobbler
+			虚拟机：image file template			
+		configuration:
+			程序包管理、用户管理、配置文件、服务管理、cron任务等等；
+			puppet, saltstack, chef, cfengine
+		task exec
+			command and control
+			func, fabric
+		程序发布：灰度模型
+        ansible的主程序：
+                      ansible --help 
+                      ansible-playbook
+                      ansible-doc -l 查看模块
+                      ansible-doc -s MODULENAME 查看指定模块的帮助信息
+ansible的简单使用格式：
+	ansible <host-pattern> [-m module_name] [-a args] args是模块选项，key=value
+		常用模块：
+			command -a 'COMMAND'   command模块要执行命令是无须给出key=value，而是直接给出要执行的命令即可；
+                        shell   -a 'COMMAND'   command和shell模块都用于在远程主机上执行命令，但是shell模块支持shell特性，比如管道等	
+			user    -a 'name=  system= shell= group= groups=附加组 uid= comment=  state={present|absent}
+			group   -a 'name= gid= state= system='
+			cron    -a 'name=必须有 minute= hour= day= month= weekday= job= user=  state=present创建/absent删除'
+			copy    -a 'dest= src=  mode= owner= group=' 复制本地文件到远程主机
+			file    -a 'path= mode= owner= group=  state={directory创建目录|link创建链接|file|hard|touch|absent} src=只有在link时才使用'   设置文件属性
+			ping    没有参数
+			yum     -a 'name= state={present|latest|absent}'
+			service -a 'name= state={started|stopped|restarted} enabled=1|0'  runlevel=
+			script  -a '/path/to/script'  复制本地主机的脚本到远程主机执行
+			setup   收集远程主机上的变量     
+                        fetch   -a 'dest= src='从远程主机复制文件到本机
+                        hostname -a name=
+                        pip 管理python库依赖性
+                        template：表示调用template模块，template模块作用类似copy，但是template文件里面一般都含有变量。
+命令使用案例:
+   本机地址是192.168.139.192，远程地址是192.168.139.181，先配置好基于密钥的ssh认证
+   [root@node1 .ssh]# ansible 192.168.139.181 -m command -a  'ifconfig'
+   [root@node1 .ssh]# ansible 192.168.139.181 -m shell -a  'ifconfig'
+   [root@node1 .ssh]# ansible 192.168.139.181 -m file -a  'path=/tmp/test.txt state=touch'
+   [root@node1 .ssh]# ansible 192.168.139.181 -m  fetch  -a 'src=/etc/passwd dest=/tmp/' 
+192.168.139.181 | SUCCESS => {  状态为success
+    "changed": true, 
+    "checksum": "f612aa246061a4d30d772e45a34622732524abab", 
+    "dest": "/tmp/192.168.139.181/etc/passwd"   路径比较奇怪，仔细查看
+补充说明：
+    vim /etc/ansible/hosts
+    [webservers]
+         192.168.139.181
+    此时上面的ansible 192.168.139.181 -m command -a  'ifconfig'就可以修改为ansible webservers -m command -a  'ifconfig'
+yaml:yet another mark language 任是一种标记语言
+playbook的核心元素：
+                hosts：
+                remote_user:
+		tasks: 任务
+		variables: 变量
+		templates: 模板，是一个文本文件且嵌套有脚本（使用模板编程语言编写）
+		handlers: 由特定条件触发的任务，接收到其他任务的通知时被触发
+		roles: 角色
+playbook的基础组件：
+       hosts
+       remote_user
+       sudo_user
+       tasks:任务列表
+             模块+模块参数
+             格式:
+                 （1）action:module:arguments
+                 （2）module:arguments
+                  注意：command和shell模块后面直接跟命令
+运行playbook的方式：
+      （1）测试
+           ansible-playbook --syntax-check
+           ansible-playbook --check
+           ansible-playbook --list-hosts
+        (2)运行
+           1）任务的状态在运行后为changed时，可以通过notify通知给相应的handlers
+           2）任务可以通过tags打标签，而后再ansible-playbook命令上使用-t进行调用
+variables
+      （1）facts直接调用，通过ansible ip -m setup 查找对应IP主机的变量
+      （2）ansible-playbook命令的命令行中的自定义变量,变量的调用方式为{{variable}}
+           ansible-playbook -e ‘VARNAME=varvalue’
+      （3）通过roles传递变量
+      （4）host inventory（库存，盘查），也就是修改/etc/ansible/hosts文件来实现
+           1）向不同的主机传递不同的变量
+              ip|hostname var1=value var2=value
+           2）向组中的主机传递相同的变量
+              [groups:vars]
+              var1=value
+              .......
+           注意:inventory参数是用于定义ansible远程连接目标主机时使用的参数，而非传递给playbook的变量
+           ansible_ssh_port,
+           ansible_ssh_user,
+           ansible_ssh_pass
+31-1
+ Jinja2字面量：联想python
+        字符串：使用单引号或双引号
+        数字：整数，浮点数
+        列表：[items,items..]
+        元组：(items,items..）
+        字典：{key:value,key:value...}
+        布尔型：true/false
+        算术运算：+ - * / //(取整数） % ** 
+        比较运算：==，!=,>,<,<=,>=
+        逻辑运算:and,or,not
+template的具体操作案例：
+ 1）vim /root/nginx.yml
+      - hosts: all   中间必须有空格，否则会有语法错误，这里最好是webservers或者使用变量，这样可以一个yml文件对应多个主机环境进行部署
+        remote_user: root
+        tasks:
+        - name: install nginx 
+          yum:  name=nginx  state=present
+        - name: install conf file
+          template: src=/root/nginx.conf dest=/etc/nginx/nginx.conf
+        - name: start nginx
+          service: name=nginx state=started
+  2）vim /root/nginx.conf 该配置文件事先不存在，需要先从一个主机复制该配置文件过来做模板
+         user nginx;
+         worker_processes {{ ansible_processor_vcpus }}; 此变量可以用ansible-doc -m setup找寻出来
+         http {
+               server {
+                       listen       {{ nginx_port }}; 调用自定义变量
+               }
+          }
+  3）vim /etc/ansible/hosts
+         [webservers]
+         192.168.139.181 nginx_port=8080  这是自定义变量
+  4）ansible-playbook --syntax-check /root/nginx.yml
+  5) ansible-playbook --check /root/nginx.yml
+  6) ansible-playbook /root/nginx.yml
+  7) 连入到192.168.139.181主机，查看nginx是否启动在8080端口
+条件测试:when语句在tasks中使用， Jinja2的语法格式
+         tasks:
+         - name: install conf file to centos7
+           template: src=../nginx.conf  dest=../nginx.conf
+           when:ansible_distribution_major_version == '7' 
+循环：需要重复执行的任务
+      对迭代项的引用，固定变量名为item，而后用with_items给定要迭代的元素列表
+      列表方法：字符串，字典
+          -name: add groups
+           group:name={{ item }} state=present
+           with_items:
+               - group11
+               - group12
+          -name: add users
+           user name={{ item.name }} group={{item.group}}
+           with_items:
+               - { name:user11,group:group11}
+               - { name:user12,group:group12}
+31-2
+  roles:
+    角色集合：roles/{nginx,httpd,mysql}/
+    每个角色：以特定的目录结构进行组织，比如mysql/{files,templates,tasks}/
+    在playbook中进行角色调用（1）
+            - hosts:all
+              remote_user:root
+              roles:
+              - nginx
+              - httpd
+     files/：存放由copy或script模块等调用的文件
+     templates/:template模块查找所需要的模板文件
+     tasks，handlers，vars:至少应该包含一个main.yml的文件，其他的文件通过include实现
+     meta：至少应该包含一个main.yml的文件，其他的文件通过include实现，同时定义当前角色的特殊设定和及其依赖关系
+     default：设定默认变量时使用此目录中的main.yml文件
+     在playbook中进行角色调用（2）：传递变量给角色
+          - hosts:all
+              remote_user:root
+              roles:
+              - { role:nginx,nginx_port:8000 } role用于指定角色名称，后续的kv用于传递变量给角色，nginx_port是自定义变量
+            此外还可以基于条件测试实现角色调用
+              roles:
+              - { role: nginx, when: ansible_distribution_major_version == '6' }
+roles的具体使用案例：
+1)mkdir /etc/ansible/roles/nginx/{handlers,tasks,templates,vars} -p 
+2)vim /etc/ansible/roles/nginx/templates/nginx.conf 
+         user nginx;
+         worker_processes {{ ansible_processor_vcpus }}; 
+         http {
+               server {
+                       listen       {{ nginx_port }}; 
+               }
+          }
+3)vim /etc/ansible/roles/nginx/tasks/main.yml 
+- name: install nginx 
+  yum:  name=nginx  state=present
+- name: install conf file
+  template: src=nginx.conf dest=/etc/nginx/nginx.conf  由于已经指定了角色为nginx，所以程序会自动到nginx目录下面的templates寻找模板文件，因此src路径可以写相对路径 
+  notify: restart nginx
+  tags: confchang 
+- name: start nginx
+  service: name=nginx state=started
+4)vim /etc/ansible/roles/nginx/handlers/main.yml 
+- name: restart nginx 
+  service: name=nginx state=restarted
+5)vim /etc/ansible/roles/nginx/vars/main.yml 
+nginx_port: 8088
+6)vim  /root/nginx.yml 
+- hosts: all
+  remote_user: root
+  roles:
+  - { role: nginx,when: ansible_distribution_major_version == '7' }
+
+7）ansible-playbook --syntax-check /root/nginx.yml
+8) ansible-playbook --check /root/nginx.yml
+9) ansible-playbook  /root/nginx.yml 查看服务是否正常启动在8088端口
+补充说明:
+有两种方式可以覆盖掉/etc/ansible/roles/nginx/vars/main.yml内的变量值
+   方式一）修改/root/nginx.yml为
+   - hosts: all
+     remote_user: root
+     roles:
+     - { role: nginx,nginx_port:8000,when: ansible_distribution_major_version == '7' }
+   方式二）命令行中传参数
+   ansible-playbook -e 'nginx_port=8000'  /root/nginx.yml
+此外，使用如下命令可以只运行打标后的代码
+   ansible-playbook -e 'nginx_port=8000' -t confchang  /root/nginx.yml 
+实战项目：
+        主/备模式高可用：keepalived+nginx的集群；
+        两台主机实现httpd+php
+        一台主机实现mysql
+ansible中文：http://www.ansible.com.cn
