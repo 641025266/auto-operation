@@ -1,0 +1,126 @@
+
+gitlab安装配置
+安装主机内存至少要在1G以上
+]# curl -sS http://packages.gitlab.cc/install/gitlab-ce/script.rpm.sh | bash
+]# cat /etc/yum.repos.d/gitlab_gitlab-ce.repo 
+[gitlab-ce]
+name=gitlab-ce
+baseurl=http://mirrors.tuna.tsinghua.edu.cn/gitlab-ce/yum/el6  到这个网站获取指定版本的rpm包
+repo_gpgcheck=0
+gpgcheck=0
+enabled=1
+gpgkey=https://packages.gitlab.com/gpg.key
+]# yum install https://mirrors.tuna.tsinghua.edu.cn/gitlab-ce/yum/el6/gitlab-ce-9.5.8-ce.0.el6.x86_64.rpm 先安装9.5.8版
+]# gitlab-ctl reconfigure   无需修改任何配置就可以直接加载配置文件，如果是第一次时间比较久，最终会退出前台
+]# gitlab-ctl status
+run: gitaly: (pid 505) 14085s; run: log: (pid 504) 14085s
+run: gitlab-monitor: (pid 509) 14085s; run: log: (pid 508) 14085s
+run: gitlab-workhorse: (pid 507) 14085s; run: log: (pid 506) 14085s
+run: logrotate: (pid 20134) 3285s; run: log: (pid 525) 14085s
+run: nginx: (pid 22864) 2019s; run: log: (pid 523) 14085s
+run: node-exporter: (pid 513) 14085s; run: log: (pid 512) 14085s
+run: postgres-exporter: (pid 528) 14085s; run: log: (pid 519) 14085s
+run: postgresql: (pid 529) 14085s; run: log: (pid 520) 14085s
+run: prometheus: (pid 22876) 2018s; run: log: (pid 514) 14085s
+run: redis: (pid 530) 14085s; run: log: (pid 521) 14085s
+run: redis-exporter: (pid 511) 14085s; run: log: (pid 510) 14085s
+run: sidekiq: (pid 24096) 1577s; run: log: (pid 518) 14085s
+run: unicorn: (pid 24415) 1484s; run: log: (pid 516) 14085s
+]# ss -tunl 查看对应的80和8080端口是否开启
+]# ll /var/opt/gitlab/  gitlab里面各个组件的单独配置文件都在此目录下
+total 68
+drwx------ 2 git               root       4096 Jan 17 03:52 backups  默认的备份目录
+-rw------- 1 root              root         38 Jan 17 00:31 bootstrapped
+drwx------ 2 git               root       4096 Jan 17 04:01 gitaly
+drwx------ 3 git               root       4096 Jan 17 00:27 git-data
+drwxr-xr-x 3 git               root       4096 Jan 17 00:27 gitlab-ci
+drwxr-xr-x 2 git               root       4096 Jan 17 04:00 gitlab-monitor
+drwxr-xr-x 9 git               root       4096 Jan 17 03:58 gitlab-rails
+drwx------ 2 git               root       4096 Jan 17 03:58 gitlab-shell
+drwxr-x--- 2 git               gitlab-www 4096 Jan 17 04:00 gitlab-workhorse
+drwx------ 3 root              root       4096 Jan 17 04:11 logrotate
+drwxr-x--- 9 root              gitlab-www 4096 Jan 17 04:46 nginx  nginx的配置目录
+drwxr-xr-x 3 root              root       4096 Jan 17 00:31 node-exporter
+drwx------ 2 gitlab-psql       root       4096 Jan 17 04:00 postgres-exporter
+drwxr-xr-x 3 gitlab-psql       root       4096 Jan 17 03:58 postgresql
+drwxr-x--- 3 gitlab-prometheus root       4096 Jan 17 04:00 prometheus
+drwxr-x--- 2 gitlab-redis      git        4096 Jan 17 04:52 redis
+-rw-r--r-- 1 root              root         40 Jan 17 03:58 trusted-certs-directory-hash
+说明：
+1）如上组件的配置文件，如果自己修改过，在执行gitlab-ctl reconfigure之前都需要复制一份出来，否则会被初始化掉，最后还需要执行gitlab-ctl restart servicename
+2）gitlab服务比较重量级，所以启动后需要等一段时间才能正常访问，在浏览器中输入10.10.9.243，如果是云主机需要输入外网IP地址，此时可以查看到gitlab的登录界面，说明配置成功
+3）把本机的公钥复制到gitlab服务里去，然后在gitlab上创建一个project，就可以正常的使用了
+
+gitlab升级配置：
+9.5.8---10.0.0--10.1.0---10.2.0--10.3.3，一次只能升级一个大版本
+把需要备份的文件进行备份
+]# gitlab-ctl stop sidekiq
+]# gitlab-ctl stop unicorn  停掉这个两个服务是为了确保在gitlab升级过程中没有数据写入,unicorn是ruby的一个应用服务器
+]# yum install https://mirrors.tuna.tsinghua.edu.cn/gitlab-ce/yum/el6/gitlab-ce-10.0.0-ce.0.el6.x86_64.rpm  安装时要确保原先的服务是运行的，因为安装时它要连入到原有服务做备份
+]# gitlab-ctl reconfigure  必须要reconfigure，否则查看版本可能会出问题
+]# gitlab-rake gitlab:env:info  查看版本是否已经更新
+最后一次升级到最新版本后，把备份的文件复制回原处
+]# gitlab-ctl restart 重启所有服务
+]# gitlab-ctl status 
+在浏览器中访问gitlab页面，同时在本地提交新文件到之前创建的project里面，如果访问和提交都成功就可以
+10.0.0版本升级成功后就按照同样的步骤升级后续版本
+
+
+邮件配置：
+]# vi /etc/gitlab/gitlab.rb 在之前的配置基础上增加如下修改
+gitlab_rails['smtp_enable'] = true
+gitlab_rails['smtp_address'] = "zbx01.enai.corp"  邮件服务器地址，必须要确保本机可以联系到该域名
+gitlab_rails['smtp_port'] = 25  邮件服务器的端口
+# gitlab_rails['smtp_user_name'] = "smtp user"
+# gitlab_rails['smtp_password'] = "smtp password"
+gitlab_rails['smtp_domain'] = "enai.corp"
+# gitlab_rails['smtp_authentication'] = "login"
+#gitlab_rails['smtp_enable_starttls_auto'] = true
+# gitlab_rails['smtp_tls'] = false  如果要tls加密就是true，否则就是false
+
+gitlab_rails['gitlab_email_enabled'] = true
+gitlab_rails['gitlab_email_from'] = 'gitlab@apollo.xiaoenai.net' 当你收到邮件时，显示发件人地址gitlab@apollo.xiaoenai.net
+gitlab_rails['gitlab_email_display_name'] = 'gitlab'             当你收到邮件时，显示发件人名称是gitlab
+gitlab_rails['gitlab_email_reply_to'] = 'gitlab@apollo.xiaoenai.net'  当你回复邮件时，显示收件人地址是gitlab@apollo.xiaoenai.net
+[root@10-10-9-243 test]# gitlab-ctl reconfigure 每次修改配置文件后，都要执行该命令让 配置文件重新生效
+1）命令行测试邮件发送功能
+]# gitlab-rails console 
+Loading production environment (Rails 4.2.10)
+2.3.0 :001 > Notify.test_email('hao.chen@enai.im', 'Message Subject', 'Message Body').deliver_now  Message Body表示真正的邮件内容
+Notify#test_email: processed outbound mail in 1.0ms
+
+Sent mail to hao.chen@enai.im (46.1ms)
+Date: Thu, 28 Dec 2017 10:38:46 +0800
+From: gitlab <gitlab@apollo.xiaoenai.net>
+Reply-To: gitlab <gitlab@apollo.xiaoenai.net>
+To: hao.chen@enai.im
+Message-ID: <5a4459368134c_21963fc8a0ddb1b8594af@10-10-230-182.mail>
+Subject: Message Subject
+Mime-Version: 1.0
+Content-Type: text/html;
+ charset=UTF-8
+Content-Transfer-Encoding: 7bit
+Auto-Submitted: auto-generated
+X-Auto-Response-Suppress: All
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN" "http://www.w3.org/TR/REC-html40/loose.dtd">
+<html><body><p>hello world</p></body></html>
+
+=> #<Mail::Message:70130696695740, Multipart: false, Headers: <Date: Thu, 28 Dec 2017 10:38:46 +0800>, <From: gitlab <gitlab@apollo.xiaoenai.net>>, <Reply-To: gitlab <gitlab@apollo.xiaoenai.net>>, <To: hao.chen@enai.im>, <Message-ID: <5a4459368134c_21963fc8a0ddb1b8594af@10-10-230-182.mail>>, <Subject: Message Subject>, <Mime-Version: 1.0>, <Content-Type: text/html; charset=UTF-8>, <Content-Transfer-Encoding: 7bit>, <Auto-Submitted: auto-generated>, <X-Auto-Response-Suppress: All>>
+
+确保这里没有任何错误才可以，然后到hao.chen@enai.im查看邮件
+2）图形界面测试邮件发送功能
+   在gitlab的登录界面选择register注册一个新账号，账户的邮箱绑定hao.chen@enai.im。
+   当你登录时假设忘记了密码，填入绑定的邮箱hao.chen@enai.im，如果可以收到邮件说明配置成功
+
+命令补充：
+]# gitlab-rake gitlab:backup:create 默认创建的备份文件在/var/opt/backups
+]# gitlab-rake gitlab:backup:restore  BACKUP=xxx.backup.tar 对应/var/opt/backups里面的文件名
+
+10.1
+GitLab Runner 10.1
+Easily Create Kubernetes Clusters on GKE (Beta)
+10.2
+Project visibility as a CI/CD variable
+10.3
+Simplified PostgreSQL HA configuration

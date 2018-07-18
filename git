@@ -1,0 +1,1217 @@
+git对于源代码开发的同事非常有用
+git实际就是保存每一个版本的变化数据
+正常情况下，工作区中的版本都是最新的
+服务器上的仓库一般都是裸仓库
+git的官方站点www.git-scm.com
+git是分布式版本管理工具，github是一个源代码托管平台，gitLab是对github的山寨版
+
+45-1
+工作目录-----git add-------》索引---git commit--本地版本系统
+工作目录《---git rm --cached---索引
+索引只是记录一个映射关系，本身不存储任何数据内容
+
+Git是一个版本控制工具，版本控制工具分为如下3类：	
+本地版本控制系统：实际就是单机版
+集中化的版本控制系统：也就是远程有一个版本服务器，这就要求客户端工作时必须要能通过网络联系到服务器
+分布式的版本控制系统：远程有一个版本服务器，客户端先从服务器拉取版本数据，在本地编辑，编辑好后再把新版本数据推送到服务器。也就是只有在拉取和推送时需要网络。
+	
+常见的版本控制系统：
+   BitKeeper（商业化的分布式的版本控制系统，linux的源代码刚开始就是托管在这上面的）
+   Git（分布式的版本控制系统）
+   CVS
+   CVS的下一版本就是SVN，SVN是一个集中化的版本控制系统	
+
+git的安装使用案例：	
+[root@localhost ~]# yum install git -y 
+[root@localhost ~]# git --help 
+usage: git [--version] [--exec-path[=GIT_EXEC_PATH]] [--html-path]
+           [-p|--paginate|--no-pager] [--no-replace-objects]
+           [--bare] [--git-dir=GIT_DIR] [--work-tree=GIT_WORK_TREE]
+           [--help] COMMAND [ARGS]
+
+The most commonly used git commands are:
+   add        Add file contents to the index 添加文件到暂存
+   bisect     Find by binary search the change that introduced a bug
+   branch     List, create, or delete branches
+   checkout   Checkout a branch or paths to the working tree
+   clone      Clone a repository into a new directory
+   commit     Record changes to the repository  提交，也就是记录改变到仓库中
+   diff       Show changes between commits, commit and working tree, etc
+   fetch      Download objects and refs from another repository
+   grep       Print lines matching a pattern
+   init       Create an empty git repository or reinitialize an existing one 创建一个空git仓库或者重新初始化一个已经存在的git仓库，
+   log        Show commit logs
+   merge      Join two or more development histories together
+   mv         Move or rename a file, a directory, or a symlink
+   pull       Fetch from and merge with another repository or a local branch
+   push       Update remote refs along with associated objects
+   rebase     Forward-port local commits to the updated upstream head  变基操作
+   reset      Reset current HEAD to the specified state  撤销操作，实际就是把HEAD修改为指定的提交
+   rm         Remove files from the working tree and from the index
+   show       Show various types of objects
+   status     Show the working tree status  查看当前状态
+   tag        Create, list, delete or verify a tag object signed with GPG     
+[root@localhost myproject]# mkdir myproject  以myproject为git的工作目录，工作目录包含了工作区和.git目录
+[root@localhost myproject]# cd myproject
+[root@localhost myproject]# git init  此时会在当前目录下生成一个.git目录，在myproject目录内，除了.git目录外，其他地方都称为工作区
+[root@localhost myproject]# ls -al 
+total 12
+drwxr-xr-x   3 root root 4096 Oct 14 22:05 .
+dr-xr-x---. 34 root root 4096 Oct 14 22:05 ..
+drwxr-xr-x   7 root root 4096 Oct 14 22:05 .git
+[root@localhost myproject]# tree  ./.git 
+./.git
+├── branches
+├── config  当前仓库特有的配置
+├── description
+├── HEAD
+├── hooks
+│   ├── applypatch-msg.sample
+│   ├── commit-msg.sample
+│   ├── post-commit.sample
+│   ├── post-receive.sample
+│   ├── post-update.sample
+│   ├── pre-applypatch.sample
+│   ├── pre-commit.sample
+│   ├── prepare-commit-msg.sample
+│   ├── pre-rebase.sample
+│   └── update.sample
+├── info
+│   └── exclude
+├── objects 对象库
+│   ├── info
+│   └── pack
+└── refs
+    ├── heads
+    └── tags
+
+9 directories, 14 files
+[root@localhost myproject]# vim README
+ this is version1
+[root@localhost myproject]# git add README  如果目录下面有很多文件，想一次全部暂存可以执行git add .
+[root@localhost myproject]# tree  ./.git 
+./.git    验证了索引和对象库都是包含在.git目录里面
+├── branches
+├── config
+├── description
+├── HEAD
+├── hooks
+│   ├── applypatch-msg.sample
+│   ├── commit-msg.sample
+│   ├── post-commit.sample
+│   ├── post-receive.sample
+│   ├── post-update.sample
+│   ├── pre-applypatch.sample
+│   ├── pre-commit.sample
+│   ├── prepare-commit-msg.sample
+│   ├── pre-rebase.sample
+│   └── update.sample
+├── index  和暂存前相比，多了一个index目录
+├── info
+│   └── exclude
+├── objects
+│   ├── c9 此时对象库里面已经多一个文件，文件名就是hash码
+│   │   └── 7853b14e4f6a5c15362cd8c78289fc3de541d6
+│   ├── info
+│   └── pack
+└── refs
+    ├── heads
+    └── tags
+10 directories, 16 files
+在执行git commit提交前，必须要先有用户和邮箱，所以此时要先创建
+[root@localhost myproject]# git config -l   获取或者设置仓库的全局配置
+core.repositoryformatversion=0
+core.filemode=true
+core.bare=false
+core.logallrefupdates=true
+[root@localhost myproject]# git config --global user.name chenhao          创建用户
+[root@localhost myproject]# git config --global user.email root@localhost  创建邮箱
+[root@localhost myproject]# git config -l 
+user.name=chenhao
+user.email=root@localhost
+core.repositoryformatversion=0
+core.filemode=true
+core.bare=false
+core.logallrefupdates=true
+[root@localhost ~]# ls -al .gitconfig  因为创建的是全局配置，所以在root用户的家目录下面生成了一个.gitconfig文件
+-rw-r--r-- 1 root root 47 Oct 14 22:22 .gitconfig
+[root@localhost ~]# cat  .gitconfig   全局配置文件内容
+[user]
+	name = chenhao
+	email = root@localhost
+[root@localhost myproject]# cat .git/config  当前仓库特有的配置内容
+[core]
+	repositoryformatversion = 0
+	filemode = true
+	bare = false
+	logallrefupdates = true
+[root@localhost myproject]# git commit -m 'version1' 提交都是针对当前索引里面的内容，所以不需要指定文件。提交必须要指定一个message
+[master (root-commit) eee5ec8] version1  第一次提交称为root-commit
+ 1 files changed, 1 insertions(+), 0 deletions(-)
+ create mode 100644 README
+
+[root@localhost myproject]# cd 
+[root@localhost ~]# git clone  myproject/  new  克隆就是把远程仓库复制到本地，如果myproject/是网络上的仓库，此时就是URL就可以
+Initialized empty Git repository in /root/new/.git/
+[root@localhost ~]# ll new/
+total 4
+-rw-r--r-- 1 root root 17 Oct 14 22:42 README
+[root@localhost ~]# cat new/README  能查看到文件内容说明clone成功
+this is version1
+[root@localhost ~]# git commit --help  如下两种方式都可以查看帮助
+[root@localhost ~]# man git commit
+Git配置文件：		
+仓库特有配置：REPONAME/.git/config
+某个特定仓库下面的配置文件，此配置对当前仓库有效		
+全局配置：~/.gitconfig 	             对应的就是git config --global，某个用户家目录下面的配置文件，此配置对某个用户管理的N个仓库有效
+系统配置：/etc/git/gitconfig         对应的就是git config --system，/etc下面的配置文件，此配置对所有仓库都有效的配置
+	
+整个Git工作目录分为：	
+  工作区：Working Directory
+  索引/暂存区：index/Staging Area
+  对象库/版本库：Repository，实际可以理解为就是git的数据库目录	
+注意：索引/暂存区和对象库/版本库确切的讲是被包含在git版本库里面--重要
+
+Git的对象类型：	也就是版本库中
+       块(blob)对象：文件的每个版本表现为一个块（blob），注意此处没有写错，是blob，不是block		
+       树(tree)对象：一个目录代表一层目录信息，主要就是保存索引信息的		
+       提交(commit)对象：用于保存版本库一次变化的元数据，包括作者、邮箱、提交日期、日志；每个提交对象都指定一个目录树对象；
+       标签（tag）对象：用于给一个特定对象一个易读的名称；
+
+git是一个对象存储系统
+索引中暂存的就是原始文件名与hash码的映射关系，比如a.txt的hash码是6523f，此时只是做了快照，确切的讲是保存了树对象的快照
+git版本库中才是真正存储内容的，但是存储在git版本库中的文件名是对应文件的hash码，比如a.txt的hash码是6523f，那版本库中的文件名就是6523f，此时是做了块对象的快照
+假如你有两个不同文件名的文件，但是内容是一样的，对应git来说因为内容的hash码是一样的，所以只有一个版本	
+对象存储的解释：实际就是元数据和数据内容是存储在一起。同linux的本地文件系统相比较，linux的本地文件系统分为inode和block
+
+45-2 git基础
+对象库：内容寻址系统；
+pack file:打包文件			
+git ls-files：默认显示索引中的文件列表的原始文件名	
+git cat-file：查看文件；		
+git hash-object：计算文件的hash码；
+git write-tree：根据当前索引中的内容创建树对象，索引中的内容就是映射关系		
+	
+Git中的文件分为3类：		
+  已追踪的（tracked）：已经在版本库中，或者已经使用git add命令添加至索引中的文件；	
+  被忽略的（Igored）：在版本库中通过“忽略文件列表”明确声明为被忽略的文件，即在工作目录下执行vim .gitignore，在该文件里面增加你想忽略的文件		
+  未追踪的（untracked）：上述两类之外的其它文件，通过git rm --cached源文件来实现
+		
+add/rm/mv命令：			
+        git add：暂存文件，此时版本库和索引中保存的都是快照，映射关系也会保存在索引中
+        git commit: commit就是把索引中的快照保存到版本库中，生成提交对象，同时同父提交做比较，把差异部分保存下来		
+        git ls-files：默认显示索引中的文件列表的原始文件名；				
+        git -s ls-files：显示索引中的详细文件信息，比如权限、对象名、暂存号及原始文件名；				    
+        git -o ls-files：显示未被追踪的文件； 				
+        git rm：删除工作目录中的文件及索引中的映射，版本库中的内容是不可能被删除的				
+        git rm --cached：只删除索引中的映射，同时也实现了未追踪的的功能										   
+        git mv：改变工作目录中的文件名，及索引中的映射，实际就是不能直接使用linux系统中的mv，否则索引中的映射会乱掉			
+        git log：查看提交日志；
+git使用案例：
+[root@localhost ~]# mkdir dir
+[root@localhost ~]# cd dir/
+[root@localhost dir]# git init 
+Initialized empty Git repository in /root/dir/.git/
+[root@localhost dir]# vim INSTALL
+[root@localhost dir]# git add INSTALL 
+[root@localhost dir]# tree .git/
+.git/
+├── branches
+├── config
+├── description
+├── HEAD
+├── hooks
+│   ├── applypatch-msg.sample
+│   ├── commit-msg.sample
+│   ├── post-commit.sample
+│   ├── post-receive.sample
+│   ├── post-update.sample
+│   ├── pre-applypatch.sample
+│   ├── pre-commit.sample
+│   ├── prepare-commit-msg.sample
+│   ├── pre-rebase.sample
+│   └── update.sample
+├── index
+├── info
+│   └── exclude
+├── objects
+│   ├── 1a
+│   │   └── 80477ef8020c0108a2dba151b73fc5cb0f41b3
+│   ├── info
+│   └── pack
+└── refs
+    ├── heads
+    └── tags
+
+10 directories, 16 files
+[root@localhost dir]# git ls-files 
+INSTALL
+[root@localhost dir]# git ls-files -s 
+100644 1a80477ef8020c0108a2dba151b73fc5cb0f41b3 0	INSTALL    左边的内容依次表示权限、对象名、暂存号及原始文件名
+[root@localhost dir]# git cat-file -p  1a80                        只要是唯一的就可以表示对象
+this is install 
+[root@localhost dir]# git cat-file -h 查看帮助
+usage: git cat-file (-t|-s|-e|-p|<type>) <object>
+   or: git cat-file (--batch|--batch-check) < <list_of_objects>
+<type> can be one of: blob, tree, commit, tag
+    -t                    show object type 显示对象类型
+    -s                    show object size 显示对象大小
+    -e                    exit with zero when there's no error
+    -p                    pretty-print object's content 显示对象内容
+    --batch               show info and content of objects fed from the standard input
+    --batch-check         show info about objects fed from the standard input
+[root@localhost dir]# mkdir subdir  再创建一个子目录
+[root@localhost dir]# vim subdir/test.txt
+this is test.txt
+[root@localhost dir]# git add .
+[root@localhost dir]# git commit -m 'version1' 
+[master (root-commit) 082e57c] version1
+ 2 files changed, 2 insertions(+), 0 deletions(-)
+ create mode 100644 INSTALL
+ create mode 100644 subdir/test.txt
+[root@localhost dir]# tree .git/
+.git/
+├── branches
+├── COMMIT_EDITMSG
+├── config
+├── description
+├── HEAD
+├── hooks
+│   ├── applypatch-msg.sample
+│   ├── commit-msg.sample
+│   ├── post-commit.sample
+│   ├── post-receive.sample
+│   ├── post-update.sample
+│   ├── pre-applypatch.sample
+│   ├── pre-commit.sample
+│   ├── prepare-commit-msg.sample
+│   ├── pre-rebase.sample
+│   └── update.sample
+├── index
+├── info
+│   └── exclude
+├── logs
+│   ├── HEAD
+│   └── refs
+│       └── heads
+│           └── master
+├── objects
+│   ├── 08
+│   │   └── 2e57c177158cd300effdfddfab618e3141c987
+│   ├── 1a
+│   │   └── 80477ef8020c0108a2dba151b73fc5cb0f41b3
+│   ├── 51
+│   │   └── b31e59faf6f7ecd7b0498fe2356fb9c992cecd
+│   ├── 66
+│   │   └── e61107f2f2f069a2861341f5e0f95bc25abd82
+│   ├── 89
+│   │   └── cc0c16857ec9f4739046f4ee46819a2e94a385
+│   ├── info
+│   └── pack
+└── refs
+    ├── heads
+    │   └── master
+    └── tags
+17 directories, 24 files
+[root@localhost dir]# git cat-file -t 082e   查看对象类型
+commit
+[root@localhost dir]# git cat-file -t 1a80 
+blob
+[root@localhost dir]# git cat-file -t 51b3
+tree
+[root@localhost dir]# git cat-file -t 66e6 
+blob
+[root@localhost dir]# git cat-file -t 89cc
+tree
+
+git rm的使用案例：
+[root@localhost dir]# cp /etc/fstab  .
+[root@localhost dir]# cp /etc/passwd .
+[root@localhost dir]# cp /etc/shadow .
+[root@localhost dir]# ll
+total 20
+-rw-r--r-- 1 root root  805 Oct 15 00:40 fstab
+-rw-r--r-- 1 root root   17 Oct 14 23:34 INSTALL
+-rw-r--r-- 1 root root 2007 Oct 15 00:40 passwd
+---------- 1 root root 1306 Oct 15 00:40 shadow
+drwxr-xr-x 2 root root 4096 Oct 14 23:43 subdir
+[root@localhost dir]# git add passwd shadow fstab
+[root@localhost dir]# git status 
+# On branch master
+# Changes to be committed:
+#   (use "git reset HEAD <file>..." to unstage)
+#
+#	new file:   fstab           new file表示是暂存，还没有提交 
+#	new file:   passwd
+#	new file:   shadow
+#
+[root@localhost dir]# git commit -m 'version2' 
+[master 678d802] version2
+ 3 files changed, 97 insertions(+), 0 deletions(-)
+ create mode 100644 fstab
+ create mode 100644 passwd
+ create mode 100644 shadow
+[root@localhost dir]# git ls-files  -s 
+100644 1a80477ef8020c0108a2dba151b73fc5cb0f41b3 0	INSTALL
+100644 55b54a2846fd6809b4d8d091e3c3df4f6ada2761 0	fstab
+100644 5acc5bc18a83eb922347a2956ab792620aa13357 0	passwd
+100644 3346a7e255ad34fc19f68b9c46281e5caed04416 0	shadow
+100644 66e61107f2f2f069a2861341f5e0f95bc25abd82 0	subdir/test.txt
+[root@localhost dir]# git rm passwd  此时工作目录和索引中的passwd都被删除了
+rm 'passwd'
+[root@localhost dir]# ll   查看工作目录，确实没有passwd
+total 16
+-rw-r--r-- 1 root root  805 Oct 15 00:40 fstab
+-rw-r--r-- 1 root root   17 Oct 14 23:34 INSTALL
+---------- 1 root root 1306 Oct 15 00:40 shadow
+drwxr-xr-x 2 root root 4096 Oct 14 23:43 subdir
+[root@localhost dir]# git ls-files  -s  查看索引，确实没有passwd
+100644 1a80477ef8020c0108a2dba151b73fc5cb0f41b3 0	INSTALL
+100644 55b54a2846fd6809b4d8d091e3c3df4f6ada2761 0	fstab
+100644 3346a7e255ad34fc19f68b9c46281e5caed04416 0	shadow
+100644 66e61107f2f2f069a2861341f5e0f95bc25abd82 0	subdir/test.txt
+[root@localhost dir]# git cat-file -p 5acc5bc    但是此时git版本库中的passwd还在，此时还可以查看passwd的内容
+[root@localhost dir]# git rm --cached fstab      此时只是删除索引中的映射关系
+rm 'fstab'
+[root@localhost dir]# git ls-files -s 
+100644 1a80477ef8020c0108a2dba151b73fc5cb0f41b3 0	INSTALL
+100644 3346a7e255ad34fc19f68b9c46281e5caed04416 0	shadow
+100644 66e61107f2f2f069a2861341f5e0f95bc25abd82 0	subdir/test.txt
+[root@localhost dir]# ll   工作目录中的fstab还在
+total 16
+-rw-r--r-- 1 root root  805 Oct 15 00:40 fstab
+-rw-r--r-- 1 root root   17 Oct 14 23:34 INSTALL
+---------- 1 root root 1306 Oct 15 00:40 shadow
+drwxr-xr-x 2 root root 4096 Oct 14 23:43 subdir
+
+45-3
+git应用进阶
+提交的标识：
+引用：ID， reference, SHA1, 绝对提交名；
+符号引用：symbolic reference, symref；
+本地特性分支名称: .git/refs/heads/REF			   
+远程跟踪分支名称: .git/refs/remotes/REF			
+标签名: .git/refs/tags/REF
+
+如上3个REF的查找位置，此次操作是在上面案例的基础上执行
+[root@localhost dir]# ls -al .git/refs/
+total 16
+drwxr-xr-x 4 root root 4096 Oct 14 23:34 .
+drwxr-xr-x 8 root root 4096 Oct 15 00:46 ..
+drwxr-xr-x 2 root root 4096 Oct 15 00:41 heads
+drwxr-xr-x 2 root root 4096 Oct 14 23:34 tags
+Git会自动维护几个特定目的的特殊符号引用：
+          HEAD：始终指向当前分支的最近提交；或检出到其它分支时，目标分支的最近提交；
+     ORIG_HEAD：合并操作时，针对当前分支，新生成的提交之前的提交保存于此引用中，也就是父提交保存在此引用中				
+  FETCHED_HEAD:远程分支				
+    MERGE_HEAD：合并操作时，其它分支的上一次提交
+
+HEAD位置的查看：
+[root@localhost dir]# ls -al .git/HEAD 
+-rw-r--r-- 1 root root 23 Oct 14 23:34 .git/HEAD
+[root@localhost dir]# cat .git/HEAD   HEAD里面的内容通过master来指向当前分支的最新提交
+ref: refs/heads/master
+相对提交名：--重要
+   假设C6是由C5和Y合并来的，C5的父提交是C4，C4的父提交是C3，依次类推				
+   ^：以当前提交为中心的父提交,比如C6^1表示C5的提交，C6^2表示Y的提交 
+   ~：同一代提交一直往前推，比如C6~1表示C5的提交，C6~2表示C4的提交
+git diff --color  比较索引及工作目录，--color表示语法加颜色
+git diff --cached 比较索引与最近一次提交
+git diff HEAD     比较当前工作目录与最近一次提交
+git diff commit1 commit2  
+
+diff案例：接着上面的案例配置
+先做一次提交，把之前的暂存全部保存起来
+[root@localhost dir]# vim INSTALL
+this is install
+new line 增加一行新内容
+[root@localhost dir]# git diff   只能针对已经追踪的做比较，未追踪的不能做比较
+diff --git a/INSTALL b/INSTALL
+index 1a80477..7811d67 100644
+--- a/INSTALL
++++ b/INSTALL
+@@ -1 +1,2 @@
+ this is install 
++new line
+[root@localhost dir]# git add INSTALL    做一次暂存就可以消除工作目录与暂存的差异
+[root@localhost dir]# git diff
+[root@localhost dir]# git diff --cached  此时比较索引与最近一次提交的差异，因为还没有提交，所以有差异
+diff --git a/INSTALL b/INSTALL
+index 1a80477..7811d67 100644
+--- a/INSTALL
++++ b/INSTALL
+@@ -1 +1,2 @@
+ this is install 
++new line
+
+[root@localhost dir]# git diff HEAD  此时比较工作目录与最近一次提交的差异
+diff --git a/INSTALL b/INSTALL
+index 1a80477..7811d67 100644
+--- a/INSTALL
++++ b/INSTALL
+@@ -1 +1,2 @@
+ this is install 
++new line
+[root@localhost dir]# git log  查看提交日志
+commit 678d802eaad772e6d69890a379d71cb378497587
+Author: chenhao <root@localhost>
+Date:   Sun Oct 15 00:41:24 2017 +0800
+    version2
+commit 082e57c177158cd300effdfddfab618e3141c987
+Author: chenhao <root@localhost>
+Date:   Sat Oct 14 23:44:30 2017 +0800
+    version1
+[root@localhost dir]# git diff 678d  082e 比较两次不同提交之间的差异
+git reset：撤消此前的操作； 
+    --soft：将HEAD引用指向给定的提交，但不影响索引和工作目录；
+   --mixed：将HEAD引用指向给定的提交，并将索引内容改变为指定的快照；但不改变工作目录；
+    --hard：将HEAD引用指向给定的提交，将索引内容改变为指定提交的快照，并改变工作目录中的内容为指定提交的内容；
+注意:git diff和git reset只针对已经追踪的有效，没有追踪的则无效
+reset使用案例：
+[root@localhost dir]# git commit -m 'version3' 
+[master f9f4716] version3
+ 1 files changed, 1 insertions(+), 0 deletions(-)
+[root@localhost dir]# git log
+commit f9f471628e5248a4003c278dbe99323f88324051
+Author: chenhao <root@localhost>
+Date:   Sun Oct 15 04:15:03 2017 +0800
+    version3
+commit 678d802eaad772e6d69890a379d71cb378497587
+Author: chenhao <root@localhost>
+Date:   Sun Oct 15 00:41:24 2017 +0800
+    version2
+commit 082e57c177158cd300effdfddfab618e3141c987
+Author: chenhao <root@localhost>
+Date:   Sat Oct 14 23:44:30 2017 +0800
+    version1
+[root@localhost dir]# git status 
+# On branch master
+nothing to commit (working directory clean)
+[root@localhost dir]# git reset --soft  HEAD^    
+此处HEAD^的意思就等效于前面的C6^，此时就相当于废掉了version3,也可以把HEAD^修改为HEAD~1，也可以把HEAD^修改为version2对应的commit号码，即678d802eaad772e6d69890a379d71cb378497587
+[root@localhost dir]# git log 
+commit 678d802eaad772e6d69890a379d71cb378497587
+Author: chenhao <root@localhost>
+Date:   Sun Oct 15 00:41:24 2017 +0800
+    version2
+commit 082e57c177158cd300effdfddfab618e3141c987
+Author: chenhao <root@localhost>
+Date:   Sat Oct 14 23:44:30 2017 +0800
+    version1
+[root@localhost dir]# git status 
+# On branch master
+# Changes to be committed:
+#   (use "git reset HEAD <file>..." to unstage)  从此处提示得知，撤销某文件的操作
+#
+#	modified:   fstab
+#	deleted:    passwd
+#
+# Changed but not updated:
+#   (use "git add <file>..." to update what will be committed)
+#   (use "git checkout -- <file>..." to discard changes in working directory)
+#
+#	modified:   INSTALL
+#
+[root@localhost dir]# git reset HEAD fstab  撤销fstab文件
+Unstaged changes after reset:
+M	INSTALL
+M	fstab
+[root@localhost dir]# git status 再次查看
+# On branch master
+# Changes to be committed:
+#   (use "git reset HEAD <file>..." to unstage)  
+#
+#	deleted:    passwd
+#
+# Changed but not updated:
+#   (use "git add <file>..." to update what will be committed)
+#   (use "git checkout -- <file>..." to discard changes in working directory)
+#
+#	modified:   INSTALL
+#	modified:   fstab  
+45-4 git应用进阶
+补充说明：
+如果是想撤销git push操作，首先先在本地按照上面的方法把本地版本撤销到自己想要的版本，修改后add，commit后做push来覆盖掉远端代码，
+但是此时在push时需要执行类型git push origin master --force
+
+
+Git分支:
+--重要，工作中必然会用到	
+分支命名法则：
+    可以使用/，但不能以/结尾；		
+    不能以-开头；
+    位于/后面的组件，不能以.开头；	
+    不能使用连续的...；
+    不能使用空白字符；	
+    不能使用^, ~, ?, *，[ 等符号	  
+    必须惟一；
+    分支的名字始终指向目标分支的最近一次提交；
+    git branch                             列出分支		
+    git branch BRANCH_NAME [START_COMMIT]  创建分支，创建分支必须要基于某一次的提交			
+    git branch -d BRANCH_NAME  删除分支		
+    git show-branch  [--more=number]      查看分支及其相关的提交；
+    git checkout <branchname>             切换到指定分支；
+如果两个分支都有一个同名的文件，从当前分支切换到其他分支时，必须对当前分支做暂存和提交或者删除，否则系统会提示不能切换到其他分支
+HEAD引用一般指向当前活动分支的最近一次提交，当前分支不一定是master，也可能是其他分支
+
+[root@localhost ~]# mkdir test
+[root@localhost ~]# cd test
+[root@localhost test]# git init 
+Initialized empty Git repository in /root/test/.git/
+[root@localhost test]# git config --global user.name 'chenhao'
+[root@localhost test]# git config --global user.email 'root@localhost
+[root@localhost test]# vim README
+this is first line
+[root@localhost test]# git add . 
+[root@localhost test]# git commit -m 'version1' 
+[master (root-commit) 2818f22] version1
+ 1 files changed, 1 insertions(+), 0 deletions(-)
+ create mode 100644 README
+[root@localhost test]# git log
+commit 2818f22766ebe6f86e0b2724071ae8846270fa82
+Author: chenhao <root@localhost>
+Date:   Sun Oct 15 05:33:16 2017 +0800
+    version1
+[root@localhost test]# vim README 
+this is first line
+this is second line
+[root@localhost test]# git add . 
+[root@localhost test]# git commit -m 'version2' 
+[master c4c8d43] version2
+ 1 files changed, 1 insertions(+), 0 deletions(-)
+[root@localhost test]# git log
+commit c4c8d431ffc8f46618263e28605f1b55329cce66
+Author: chenhao <root@localhost>
+Date:   Sun Oct 15 05:34:29 2017 +0800
+    version2
+commit 2818f22766ebe6f86e0b2724071ae8846270fa82
+Author: chenhao <root@localhost>
+Date:   Sun Oct 15 05:33:16 2017 +0800
+    version1
+[root@localhost test]# git status 
+# On branch master
+nothing to commit (working directory clean)
+[root@localhost test]# git branch -l 
+* master
+[root@localhost test]# git branch dev 2818f   基于version1创建分支，如果后面没有加提交的ID号，则表示基于当前最近一次提交创建分支
+[root@localhost test]# git branch             查看到目前有两个分支，*表示目前所在分支
+  dev
+* master
+[root@localhost test]# git show-branch 
+! [dev] version1       表示dev分支对应的提交是version1
+ * [master] version2
+--
+ * [master] version2
++* [dev] version1
+[root@localhost test]# git checkout dev  切换到dev分支
+Switched to branch 'dev'
+[root@localhost test]# git branch  
+* dev  此时*切换到dev
+  master
+[root@localhost test]# cat README  此时查看文件，对应的是version1提交时的内容
+this is first line
+[root@localhost test]# git log     此时查看提交日志时，只能看到version1，version2看不到
+commit 2818f22766ebe6f86e0b2724071ae8846270fa82
+Author: chenhao <root@localhost>
+Date:   Sun Oct 15 05:33:16 2017 +0800
+    version1
+[root@localhost test]# vim README 
+this is first line
+this is third line
+[root@localhost test]# git add README 
+[root@localhost test]# git commit -m 'version1-1' 
+[dev fb7d2a0] version1-1
+ 1 files changed, 1 insertions(+), 0 deletions(-)
+[root@localhost test]# git log 
+commit fb7d2a005cef9addf02bcf52ff367f30186dfdfc
+Author: chenhao <root@localhost>
+Date:   Sun Oct 15 05:50:21 2017 +0800
+    version1-1
+commit 2818f22766ebe6f86e0b2724071ae8846270fa82
+Author: chenhao <root@localhost>
+Date:   Sun Oct 15 05:33:16 2017 +0800
+    version1
+[root@localhost test]# git checkout master  再次切换回master分支
+Switched to branch 'master'
+[root@localhost test]# git log 
+commit c4c8d431ffc8f46618263e28605f1b55329cce66
+Author: chenhao <root@localhost>
+Date:   Sun Oct 15 05:34:29 2017 +0800
+    version2
+commit 2818f22766ebe6f86e0b2724071ae8846270fa82
+Author: chenhao <root@localhost>
+Date:   Sun Oct 15 05:33:16 2017 +0800
+    version1
+[root@localhost test]# cat README  在version1-1中修改的内容此处不会体现出来
+this is first line
+this is second line
+
+分支合并概念，如下三个缺一不可：			    
+      合并基础：要合并的两个分支的最近一次的共同提交--仔细理解			
+    我们的版本：当前分支的最近一次提交；
+    他们的版本：要合并进来的分支的最近一次提交；
+无冲突合并的操作步骤
+$ git checkout master  表示切换到master分支，master就是分支名			
+$ git status           确保没有任何文件处于未追踪状态			
+$ git merge BRANCH_NAME BRANCH_NAME表示其他分支名，做merge时也需要先暂存然后再提交，理解这个思想很重要。如果有冲突，索引依然会被改变，只是提交会自动停止		
+$ git log --graph --pretty=oneline --abbrev-commit 以图形方式显示，一行显示一次
+有冲突合并：
+    解释：如果两个分支里面有相同的文件名，但是文件内容不一样时，合并时就会出现冲突，合并就自动停止		
+    手动解决冲突：即vim编辑有冲突的文件，也就是人工判定要保留哪些内容，要删除哪些内容		
+    解决冲突完成之后再执行git add和git commit
+补充说明：
+       如果想撤销合并，即回到合并前的状态，请执行git reset --hard  ORIG_HEAD
+带有冲突的分支合并的操作案例：
+[root@localhost /tmp]# mkdir test
+[root@localhost /tmp]# cd test
+[root@localhost test]# git init 
+Reinitialized existing Git repository in /tmp/test/.git/
+[root@localhost test]# git config --global user.name 'chenhao'
+[root@localhost test]# git config --global user.email root@localhost 
+[root@localhost test]# vim readme
+first line 
+[root@localhost test]# git add readme 
+[root@localhost test]# git commit -m 'version0.0' 
+[master (root-commit) fb00c5e] version0.0
+ 1 files changed, 1 insertions(+), 0 deletions(-)
+ create mode 100644 readme        
+[root@localhost test]# vim readme 
+first line
+second line
+[root@localhost test]# git add readme 
+[root@localhost test]# git commit -m 'version0.1' 
+[master c0cb170] version0.1
+ 1 files changed, 1 insertions(+), 0 deletions(-)
+[root@localhost test]# vim readme 
+first line
+second line
+third line
+[root@localhost test]# git add readme 
+[root@localhost test]# git commit -m 'version0.2' 
+[master 23d6342] version0.2
+ 1 files changed, 1 insertions(+), 0 deletions(-)
+[root@localhost test]# git log 
+commit 23d634238e9997edad347f301bcef23f98cb8dec
+Author: chenhao <root@localhost>
+Date:   Sat Nov 4 22:15:13 2017 +0800
+    version0.2
+commit c0cb1703c39ee259a7b830b327c72bbca670d720
+Author: chenhao <root@localhost>
+Date:   Sat Nov 4 22:14:56 2017 +0800
+    version0.1
+commit fb00c5e1b33c16d324b4bc599147c953915376bf
+Author: chenhao <root@localhost>
+Date:   Sat Nov 4 22:14:37 2017 +0800
+    version0.0
+[root@localhost test]# git branch dev c0cb1703c
+[root@localhost test]# git branch 
+  dev
+* master
+[root@localhost test]# git checkout dev 
+Switched to branch 'dev'
+[root@localhost test]# vim readme 
+first line
+second line
+new line
+[root@localhost test]# git add readme 
+[root@localhost test]# git commit -m 'version0.1-1' 
+[dev 5bb9a53] version0.1-1
+ 1 files changed, 1 insertions(+), 0 deletions(-)
+[root@localhost test]# git checkout master
+[root@localhost test]# git merge dev 
+Auto-merging readme
+CONFLICT (content): Merge conflict in readme
+Automatic merge failed; fix conflicts and then commit the result.   表示有冲突，提交停止了
+[root@localhost test]# git ls-files --unmerged  查看未能合并成功的索引中的文件
+100644 06fcdd77c9348567c50638b30d406500f521c304 1	readme      1表示合并基础
+100644 20aeba2bad864cf6904f9caaea55f46f03ce6ac1 2	readme      2表示我们的版本
+100644 3eb97f9cbf96841b5b480ec034d1ef858e745924 3	readme      3表示他们的版本
+[root@localhost test]# cat readme 
+first line
+second line
+<<<<<<< HEAD
+third line
+=======
+newline
+>>>>>>> dev
+[root@localhost test]# vim   readme 人工判定哪些需要留下来，哪些需要删除，本次假设所有内容都保留下来
+first line
+second line
+third line
+newline
+[root@localhost test]# git add readme    内容修改完成后再执行add和commit
+[root@localhost test]# git commit -m 'merge' 
+[master 40d599c] merge
+[root@localhost test]# git log --graph --pretty=oneline --abbrev-commit
+*   40d599c merge
+|\  
+| * 5bb9a53 version0.1-1
+* | 23d6342 version0.2     一个*表示一次提交
+|/  
+* c0cb170 version0.1
+* fb00c5e version0.0
+[root@localhost test]# git cat-file -p 40d599c    查看merge提交的对象内容
+tree 04752def582b5d4f9c1489e2f47773350d2cd3ff
+parent 23d634238e9997edad347f301bcef23f98cb8dec
+parent 5bb9a532ef4c549a7a7c9450eb5f1658e67d06ab
+author chenhao <root@localhost> 1509805748 +0800
+committer chenhao <root@localhost> 1509805748 +0800
+merge
+[root@localhost test]# git cat-file -p 04752def
+100644 blob ed8a429f3bc41f3618de2c614b1b741eea90aae6	readme
+[root@localhost test]# git cat-file -p ed8a429f
+first line
+second line
+third line
+newline
+
+变基操作:git rebase 
+变基操作案例：				
+            $ git checkout dev
+            $ git rebase master  参照pdf文档的rebase介绍
+            $ git checkout master  
+            $ git merge -m "MSG"   在master分支上进行合并
+message to be used for the merge commit，如果没有加-m，merge提交时会自动生成一个名称
+变基实现的作用基本同合并一样，只不过先变基然后再合并的速度要比直接合并的速度快 
+
+在本地删除远程分支的操作:
+capistrano git:(master) git branch -r  先在本地查看远程分支
+  origin/HEAD -> origin/master
+  origin/develop
+  origin/master
+capistrano git:(master) git branch -r -d origin/develop   删除远程分支
+Deleted remote-tracking branch origin/develop (was 9b98c45).
+capistrano git:(master) git push origin :develop  做提交，提交成功后可到远程服务器查看，确认develop分支是否已经删除
+To github.com:chenhao19890817/capistrano.git
+ - [deleted]         develop
+capistrano git:(master) git branch -r  在本地再次查看远程分支
+  origin/HEAD -> origin/master
+  origin/master
+其实现在本地的develop分支还是存在的，要么再做一次git branch -d develop删除本地develop，或者把capistrano整个目录删除掉，然后再从远程服务器拉取
+
+45-5	
+创建一个git版本库有git init和git clone这两种方式	
+		
+	
+分布式版本控制系统：Git		
+     基于网络协议：http, https, ssh, git 
+		
+		
+         克隆操作：
+git clone
+			
+	
+      原始版本库存储：.git/refs/heads/
+REF			   
+    远程跟踪分支名称
+: .git/refs/remotes/REF
+
+接着45-4的配置，本地协议的使用案例：
+[root@localhost test]# pwd 
+/tmp/test
+[root@localhost test]# tree .git/refs/
+.git/refs/
+├── heads
+│   ├── dev
+│   └── master
+└── tags
+
+2 directories, 2 files
+[root@localhost test]# cd 
+[root@localhost ~]# git clone file:///tmp/test  ./testproject    克隆远程仓库
+Initialized empty Git repository in /root/testproject/.git/
+remote: Counting objects: 15, done.
+remote: Compressing objects: 100% (5/5), done.
+Receiving objects: 100% (15/15), 1.09 KiB, done.
+remote: Total 15 (delta 0), reused 0 (delta 0)
+[root@localhost ~]# tree ./testproject/.git/refs/
+./testproject/.git/refs/
+├── heads
+│   └── master
+├── remotes
+│   └── origin
+│       └── HEAD
+└── tags
+
+4 directories, 2 files
+
+[root@localhost ~]# cd testproject
+[root@localhost testproject]# git config -l 
+user.name=chenhao
+user.email=root@localhost
+core.repositoryformatversion=0
+core.filemode=true
+core.bare=false
+core.logallrefupdates=true
+remote.origin.fetch=+refs/heads/*:refs/remotes/origin/*   fetch表示当前仓库是clone创建的，+refs/heads/*对应refs/remotes/origin/*里面的分支
+remote.origin.url=file:///tmp/test   远程URL
+branch.master.remote=origin
+branch.master.merge=refs/heads/master 
+
+
+			
+		
+Git服务器：
+			
+     协议：本地协议（local）、HTTP/HTTPS协议、SSH协议、Git协议；
+			
+			
+           本地协议：
+				
+                URL:/path/to/repo.git 
+					
+               file:///path/to/repo.git 
+					
+			
+           Git协议
+：由git-daemon程序提供，监听在tcp的9418端口；仅支持“读”操作，也就是只能fetch，不能push，无任何认证功能；
+				
+				
+               URL格式有如下2种
+
+               git://host/path/to/repo.git
+					
+               git://host/~user/path/to/repo.git 
+				
+			
+           SSH协议
+			
+               URL格式有如下2种
+               URL1：	
+                   ssh://[USER@]host[:port]/path/to/repo.git
+					
+                   ssh://[USER@]host[:port]/~USERNAME/path/to/repo.git
+					
+				
+               URL2
+：  
+                  [USER@]host/path/to/repo.git 
+					
+			
+           HTTP/HTTPS协议
+：				
+                   1.6.5-：哑http协议 
+				        
+                   1.6.6+：智能http协议
+，读/写/认证 
+					
+				
+                      URL格式为
+					
+                      http://host/path/to/repo.git
+
+					
+		
+引用远程版本库：
+			
+远程版本库：定义在配置文件中的一个实体；
+[remote "NAME"]
+，
+注意：此处的NAME是指远程版本库中的分支名
+				
+			
+remote "NAME"由两部分组成：
+				
+  第一部分：URL；
+				  
+  第二部分：refspec即引用规范，定义一个版本库与其它版本库的名称空间的映射关系；
+					
+语法格式：
+						  
+  +source:destination 
+							
+  refs/heads/NAME：本地分支 
+	
+  refs/remotes/NAME：远程跟踪分支 
+举例如下：						
+						
+ [remote "publish"]
+  publish表示远程版本库的版本库名	  
+  url = http://HOST/pub/repo_name.git 
+						
+  push = +refs/heads/*:refs/remotes/publish/*
+				
+						
+  remote.publish.url 
+						
+  remote.publish.push
+
+	  
+管理远程仓库命令：git remote
+man git-remote里面有一个配置案例
+
+
+1）Centos6+git协议安装git服务器的配置步骤：
+[root@localhost testproject]# yum install git-daemon -y
+[root@localhost testproject]# rpm -ql git-daemon
+/etc/xinetd.d/git
+/usr/libexec/git-core/git-daemon
+/usr/share/doc/git-daemon-1.7.1
+/usr/share/doc/git-daemon-1.7.1/git-daemon.html
+/usr/share/doc/git-daemon-1.7.1/git-daemon.txt
+/usr/share/man/man1/git-daemon.1.gz
+/var/lib/git
+[root@localhost testproject]# vim /etc/xinetd.d/git
+service git
+{
+        disable         = no   把此处修改为no
+        socket_type     = stream
+        wait            = no
+        user            = nobody
+        server          = /usr/libexec/git-core/git-daemon
+        server_args     = --base-path=/var/lib/git --export-all --user-path=public_git --syslog --inetd --verbose  
+        log_on_failure  += USERID
+}       如果不想使用默认的/var/lib/git作为数据库目录，修改--base-path即可
+[root@localhost testproject]# ss -tunl 查看tcp的9418端口
+[root@localhost testproject]# cd /var/lib/git
+[root@localhost testproject]# git init --bare mygit.git   
+[root@localhost testproject]# git clone git://192.168.139.166/mygit.git  在其他网络主机上执行，也就是相当于在git的客户端执行
+补充命令：
+    为了让网络上的用户可以克隆服务器上的仓库，所以需要创建一个裸仓库，因为服务器上的仓库不需要在本地修改，没有工作目录仓库的就是裸仓库
+    git协议不支持写，也就是在使用git协议时，只能进行fetch操作，比如clone，但是不能做push操作    
+    如果执行git clone git://192.168.139.166/mygit.git   test命令后，则创建的目录就说test，不是mygit
+
+
+
+45-5 50分钟开始
+2）Centos7+http协议配置git服务器的配置步骤：
+ ]# yum install -y httpd
+ ]# httpd -M|grep -E '\<(alias|cgi|env)' 必须要确保alias，cgi，env模块存在
+httpd: Could not reliably determine the server's fully qualified domain name, using localhost.localdomain for ServerName
+Syntax OK
+ env_module (shared)
+ alias_module (shared)
+ cgi_module (shared)
+ ]# mkdir /var/www/git
+ ]# cd  /var/www/git
+ ]# git init --bare mygit.git
+Initialized empty Git repository in /var/www/git/mygit.git/
+ ]# chown  -R apache:apache /var/www/git 
+ ]# rpm -ql git |grep git-http-backend 
+/usr/libexec/git-core/git-http-backend
+ ]# vim /etc/httpd/conf/git.conf
+<VirtualHost *:80>
+		  
+  ServerName node1					
+  SetEnv GIT_PROJECT_ROOT /var/www/git
+	设置环境变量，相当于documentroot				
+  SetEnv GIT_HTTP_EXPORT_ALL
+					
+  ScriptAlias /git/  /usr/libexec/git-core/git-http-backend/
+  					
+  <Directory "/usr/libexec/git-core/">
+						
+           Options ExecCGI Indexes
+						
+           Require all granted
+	  
+  </Directory>
+								
+</VirtualHost>	
+以上配置内容可以参考man git-http-backend
+
+
+ ]# httpd -t
+ ]# systemctl start  httpd.service  
+ ]# git config http.receivepack true 在服务器端设置，表示允许接收用户发过来的打包文件,否则不能上传。而且此命令必须要在mygit.git设置，且必须是针对该仓库的局部设置
+[root@www mygit.git]# cat config 
+[core]
+	repositoryformatversion = 0
+	filemode = true
+	bare = true
+[http]
+	receivepack = true
+客户端操作：
+ ]# yum install -y git 
+ ]# git clone http://192.168.139.166/git/mygit.git    git服务器的地址是192.168.139.166
+ ]# cd mygit 
+ ]# vim reademe
+first line
+ ]# git add readme
+ ]# git commit -m 'version0'
+ ]# git push origin master                            然后到服务器的.git/objects里面查看内容是否已经上传成功	
+								
+			
+服务器端查看
+ ]# ll /var/www/git/mygit.git/objects/                没有上传前，objects目录下面只有info和pack目录，其他文件是上传产生的,说明上传成功
+total 0
+drwxr-xr-x 2 apache apache 51 Nov  6 19:02 08
+drwxr-xr-x 2 apache apache 51 Nov  6 19:02 1d
+drwxr-xr-x 2 apache apache 51 Nov  6 19:02 cb
+drwxr-xr-x 2 apache apache  6 Nov  6 18:51 info
+drwxr-xr-x 2 apache apache  6 Nov  6 18:51 pack	
+
+补充说明：
+如下带有认证功能的上传没有成功
+<VirtualHost *:80>
+		  
+  ServerName node1					
+  SetEnv GIT_PROJECT_ROOT /var/www/git
+					
+  SetEnv GIT_HTTP_EXPORT_ALL
+					
+  ScriptAlias /git/  /usr/libexec/git-core/git-http-backend/
+  					
+  <Directory "/usr/libexec/git-core/">
+						
+           Options ExecCGI Indexes
+						
+           Require all granted
+	  
+  </Directory>
+					
+  <LocationMatch "^/git/.*/git-receive-pack$">
+						           
+           AuthType Basic
+						
+           AuthName "Private Git Repo"
+	        自定义的提示字符串					
+           AuthUserFile /etc/httpd/conf/.htpasswd
+		   
+           Require valid-user
+					
+  </LocationMatch>
+				
+</VirtualHost>	
+
+						
+		
+博客作业：
+      git服务器配置；
+      git-daemon
+      git-http-backend
+      服务器配置
+
+
+补充学习：远程仓库的管理，git remote，git pull，git push，同时实现拉取指定分支的代码
+git remote add  NAME  仓库URL
+git fetch [remote-name]
+git push [remote-name] [branch-name]  如果要把本地的master分支推送到origin服务器上，再次说明下，克隆操作会自动使用默认的master和origin名字，可以运行下面的命令：
+1）按照正常流程做一个仓库
+[root@www tmp]# mkdir test
+[root@www tmp]# cd test/
+[root@www test]# git init 
+Initialized empty Git repository in /tmp/test/.git/
+[root@www test]# vim readme
+first line
+[root@www test]# git add readme 
+[root@www test]# git commit -m 'v0' 
+[master (root-commit) f5dbc16] v0
+ 1 files changed, 1 insertions(+), 0 deletions(-)
+ create mode 100644 readme
+[root@www test]# vim readme 
+first line
+second line
+[root@www test]# git add readme 
+[root@www test]# git commit -m 'v1' 
+[master d7a2c80] v1
+ 1 files changed, 1 insertions(+), 0 deletions(-)
+[root@www test]# git branch dev d7a2c80
+[root@www test]# git checkout dev 
+Switched to branch 'dev'
+[root@www test]# vim readme
+first line
+second line
+dev line
+[root@www test]# git add readme
+[root@www test]# git commit -m 'v1-0' 
+[dev d1678ea] v1-0
+ 1 files changed, 1 insertions(+), 0 deletions(-)
+[root@www test]# git checkout master 
+Switched to branch 'master'
+[root@www test]# vim readme
+first line
+second line
+third line
+[root@www test]# git add readme 
+[root@www test]# git commit -m 'v2' 
+[master 5247b95] v2
+ 1 files changed, 1 insertions(+), 0 deletions(-)
+2)基于一个正常的仓库创建一个裸仓库，以便于后续做git服务器，跨主机必须做git服务器
+[root@www test]# cd ..
+[root@www tmp]# git clone --bare  test  test.git 
+Initialized empty Git repository in /tmp/test.git/
+[root@www tmp]# ll
+drwxr-xr-x  3 root root 4096 Nov 12 04:11 test
+drwxr-xr-x  7 root root 4096 Nov 12 04:13 test.git
+[root@www tmp]# cp -r  test.git  /var/www/git/
+3）基于已经创建好的git服务器，参考上面的配置
+[root@www tmp]# cd /var/www/git
+[root@www git]# chown -R apache:apache test.git 
+[root@www git]# cd test.git
+[root@www test.git]# git config http.receivepack true 
+[root@www test.git]# git config -l 
+user.name=root
+user.email=root@localhost
+http.receivepack=true
+core.repositoryformatversion=0
+core.filemode=true
+core.bare=true
+http.receivepack=true
+
+客户端操作：
+[root@www ~]# mkdir user1 
+[root@www ~]# cd user1/
+[root@www user1]# git init 
+Initialized empty Git repository in /root/user1/.git/
+[root@www user1]# git remote add new http://192.168.139.133/git/test.git 
+[root@www user1]# git remote -v 
+new	http://192.168.139.133/git/test.git (fetch)
+new	http://192.168.139.133/git/test.git (push)
+[root@www user1]# git fetch new 
+remote: Counting objects: 12, done.
+remote: Compressing objects: 100% (4/4), done.
+remote: Total 12 (delta 0), reused 0 (delta 0)
+Unpacking objects: 100% (12/12), done.
+From http://192.168.139.133/git/test
+ * [new branch]      dev        -> new/dev   表示一个仓库可以由多个分支
+ * [new branch]      master     -> new/master
+[root@www user1]# git checkout -b dev new/dev 
+Branch dev set up to track remote branch dev from new.
+Switched to a new branch 'dev'
+[root@www user1]# git checkout -b master new/master 
+Branch master set up to track remote branch master from new.
+Switched to a new branch 'master'
+[root@www user1]# git branch
+  dev
+* master
+[root@www user1]# git checkout dev 
+Switched to branch 'dev'
+[root@www user1]# cat readme 
+first line
+second line
+dev line
+[root@www user1]# vim readme 
+first line
+second line
+dev line
+user1 line
+[root@www user1]# git add readme 
+[root@www user1]# git commit -m 'v1-1' 
+[dev 45d079b] v1-1
+ 1 files changed, 1 insertions(+), 0 deletions(-)
+[root@www user1]# git push new  dev 
+Counting objects: 5, done.
+Writing objects: 100% (3/3), 256 bytes, done.
+Total 3 (delta 0), reused 0 (delta 0)
+To http://192.168.139.133/git/test.git
+   d1678ea..45d079b  dev -> dev
+注意：
+   git pull等效于git fetch和git merge这两个操作
+   git pull实现拉取代码并合并分支，而git fetch只实现拉取代码，不做分支合并，需要人工合并
+   git stash 命令
+
+
+create a new repository on the command line
+  echo "# new" >> README.md
+  git init
+  git add README.md
+  git commit -m "first commit"
+  git remote add origin git@github.com:chenhao19890817/new.git
+  git push -u origin master
+push an existing repository from the command line
+  git remote add origin git@github.com:chenhao19890817/new.git
+  git push -u origin master  可在最后加--force
+
+
+
