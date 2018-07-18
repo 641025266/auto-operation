@@ -1,0 +1,103 @@
+centos7安装jenkins
+方法1：
+先安装好tomcat，然后到jenkins的官网jenkins.io下载jenkins的war包，然后复制到tomcat的根目录，然后启动tomcat即可，因为tocmat启动时会自动解压war包，
+此时访问ip:8080/jenkins即可
+]# docker run -d -p 8080:8080 -v /root/chenhao/jenkins.war:/usr/local/tomcat/webapps/jenkins.war   docker.io/tomcat:8 
+方法2：
+]# docker  pull jenkins:2.60.3
+]# docker cp f6ad976e3:/var/jenkins_home jenkins/  
+]# docker run -d -p 1234:8080 -v /data/jenkins_home/:/var/jenkins_home --name jenkins  jenkins:2.60.3
+注意本地文件/root/chenhao/jenkins_home权限和docker上的/var/jenkins_home的权限，否则挂载不成功，使用docker logs 来调试
+方法3：
+确认java是1.8，否则要重新安装
+]# vi /etc/yum.repos.d/jenkins.repo
+[jenkins]
+name=Jenkins
+baseurl=http://pkg.jenkins.io/redhat
+gpgcheck=0
+]# yum install -y jenkins
+]# vi /etc/sysconfig/jenkins        这是jenkins的主配置文件
+JENKINS_HOME="/data/www/jenkins"    默认是/var/lib/jenkins
+]# systemctl start jenkins 
+]# rpm -ql jenkins
+/etc/init.d/jenkins
+/etc/logrotate.d/jenkins
+/etc/sysconfig/jenkins  主配置文件
+/usr/lib/jenkins
+/usr/lib/jenkins/jenkins.war
+/usr/sbin/rcjenkins
+/var/cache/jenkins
+/var/lib/jenkins  启动服务后此目录下会产生很多文件
+/var/log/jenkins  日志所在目录
+]# netstat -tunlp 查看8080端口
+访问ip:8080，第一次会安装很多插件，如果第一次安装没有成功没有关系，后续需要用到时可以再安装
+第一次要创建一个用户，账号和全名都是admin，密码自己设置
+]# ll /data/www/jenkins/
+总用量 88 部分文件此处没有列出来
+drwxr-xr-x.  2 jenkins jenkins  4096 3月   3 16:25 jobs  创建一个job后就会在该目录下面生成一个目录
+drwxr-xr-x.  3 jenkins jenkins  4096 3月   3 16:25 logs  task的日志
+-rw-r--r--.  1 jenkins jenkins   907 3月   3 16:28 nodeMonitors.xml
+drwxr-xr-x.  2 jenkins jenkins  4096 3月   3 16:25 nodes
+drwxr-xr-x. 68 jenkins jenkins 12288 3月   3 16:27 plugins
+-rw-r--r--.  1 jenkins jenkins   129 3月   3 16:28 queue.xml.bak
+-rw-r--r--.  1 jenkins jenkins    64 3月   3 16:25 secret.key
+-rw-r--r--.  1 jenkins jenkins     0 3月   3 16:25 secret.key.not-so-secret
+drwxr-xr-x.  4 jenkins jenkins  4096 3月   3 16:27 secrets
+drwxr-xr-x.  2 jenkins jenkins  4096 3月   3 16:25 updates
+drwxr-xr-x.  2 jenkins jenkins  4096 3月   3 16:25 userContent
+drwxr-xr-x.  3 jenkins jenkins  4096 3月   3 16:25 users   创建一个用户后在该目录下面生成一个目录
+
+构建一个自由风格的任务：
+1)系统管理--管理插件--确保Git plugin，publish over ssh插件一定要安装，搜索时不区分大小写
+2)配置好jenkins主机和目标之间的无密码通信
+3)系统管理--系统设置--publish over ssh，把jenkins主机私钥复制到key里面，在添加servers时，username可以是root也可以是其他用户，remote directory最好填/，然后测试--apply--保存
+4)新建任务project1--选择自由风格--源码管理(选择git，并填入git路径，同时增加账号和密码，否则不能git到源代码，在kind中选择ssh username with private key, 
+username是git，在private key中选择enter directly)--构建(选择send file or execute commands over ssh，source file填写为**/**表示git到的所有文件，
+remote directory就填写指定的目录比如/data/www/project1，exec cmmand填写命令比如chown -R nobody:nobody /data/www/project1)--应用--保存
+5)我的视图--选中任务--立即开始构建，同时可以选中console来查看构建过程，一定要确保构建过程没有错误（整个构建过程分为，到git仓库拉取源码，连入目标主机部署，执行命令，
+最后做构建后的动作，比如发邮件）
+6)构建完成后，到目标主机的/data/www/project1查看规划的文件是否已经生成
+
+增加邮件发送功能：
+1)系统管理--系统设置--jenkins location(此处系统管理员邮件地址一定要和后续的发件人保持一样，否则会报错)--邮件通知(填写smtp服务器，用户名，密码，然后通过发送邮件测试配置是否正确)
+2)进入project1--增加构建后操作步骤(选择E-mail notification,输入收件人地址,但是此时的配置只能针对构建有问题时才发邮件，正常构建成功是不发邮件的)
+3)在目标机故意设置chattr +i  /data/www/project1/,然后开始构建项目，查看是否可以收到邮件，记得最后要chattr -i  /data/www/project1/
+  注意这个命令一定是在目标机执行
+
+使用email-ext来替代jenkins默认的邮件通知配置：
+1)确保Email Extension Plugin插件(也就是email-ext)是安装好的
+2)系统管理--系统设置--Extended E-mail Notification(填写填写smtp服务器，用户名，密码,高级--default triggers里面选择always)--删除掉之前的邮件通知配置
+3)进入project1--增加构建后操作步骤(先删除之前的邮件配置，然后选择editable email notification，在Project Recipient List里面以逗号隔开填写收件人地址，
+在advanced setting里面确认规则)--应用--保存
+4)开始构建项目--查看是否收到构建后的邮件通知
+更加详细的email-ext配置参照这篇文章http://www.cnblogs.com/zz0412/p/jenkins_jj_01.html
+
+构建一个maven风格的任务：
+1)jenkins一般用来发布java的项目，maven就是用来编译打包java项目的
+2)已经在github.com/chenhao19890817的test仓库里面准备好了一个zrlog的项目
+3)在目标机上参照tomcat资料安装好tomcat，同时必须配置好管理员访问，因为jenkins要用到管理员接口
+4)maven安装：
+]# wget http://mirrors.tuna.tsinghua.edu.cn/apache/maven/maven-3/3.5.2/binaries/apache-maven-3.5.2-bin.tar.gz
+]# tar -zxvf apache-maven-3.5.2-bin.tar.gz  -C /usr/local/
+5)系统管理--全局工具配置--Maven Configuration(Default settings provider选择setting file in filesystem,file path填写/usr/local/apache-maven-3.5.2/conf/settings.xml，
+Default global settings provider也是做同样配置)--maven(MAVEN_HOME填写/usr/local/apache-maven-3.5.2/)--
+jdk(JAVA_HOME填写/usr/local/jdk1.8.0_161/，这个jdk一定要是oracle jdk，详细安装参照tomcat资料，此处open jdk不能使用，不清楚是否针对这个项目?)
+6)系统管理--管理插件(确保Maven Integration plugin，Deploy to container Plugin插件是安装的)
+7)新建任务project2--选择maven风格--源码管理(选择git，此处git配置同自由风格一样)--BUILD(Goals and options填写clean install -D maven.test.skip=true 
+表示编译前先clean，然后跳过测试)--增加构建后操作步骤(选择editable email notification，填入收件人地址)--应用--保存
+8)立即开始构建，此时主要测试是否可以在本地构建同时构建后是否可以发送邮件
+
+把项目发布到tomcat主机
+9)选择任务project2--增加构建后操作步骤(选择Deploy war/ear to a container,WAR/EAR files填写**/*.war表示所有war包，container选择tomcat 8.x，填写tomcat的管理员账号和密码，
+以及tomcat url即ip:8080)--应用--保存
+10)立即开始构建，此时才真正把项目部署到tomcat目标机,确保构建日志没有错误
+]# ll /var/lib/tomcat/webapps/  在tomcat主机的该目录下，查看是否有对应的文件生成，tomcat可以自动解压.war的包
+总用量 7612
+drwxr-xr-x. 9 tomcat tomcat    4096 3月   4 02:04 zrlog-1.9.0
+-rw-r--r--. 1 tomcat tomcat 7775884 3月   4 02:04 zrlog-1.9.0.war
+测试访问，访问tomcat_ip:8080/zrlog-1.9.0/,如果可以访问到内容，说明配置成功
+
+补充说明：
+    1)构建后一般来说文件还在本地，可以通过send build artifacts over ssh或者Deploy war/ear to a container等方式传到远程目标机,传送的方式可以由很多种，仔细理解
+      为了好理解，上面的自由风格构建时最好不要在构建中选择send file or execute commands over ssh，应在构建后操作中选择send build artifacts over ssh
+    2)jenkins+tomcat+docker，实际就是由之前的tomcat主机变为拉取tomcat的镜像，把构建后的文件ssh传到目标机，在启动tomcat挂载文件即可
